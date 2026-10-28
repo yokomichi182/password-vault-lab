@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.yokomichi.pwvault.core.AuditItem
+import dev.yokomichi.pwvault.core.BreachChecker
+import dev.yokomichi.pwvault.core.BreachResult
 import dev.yokomichi.pwvault.core.CsvImport
 import dev.yokomichi.pwvault.core.HistoryItem
 import dev.yokomichi.pwvault.core.Entry
@@ -13,6 +16,9 @@ import dev.yokomichi.pwvault.core.SyncOutcome
 import dev.yokomichi.pwvault.core.VaultRepository
 import dev.yokomichi.pwvault.core.WrongPasswordException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.withContext
@@ -28,6 +34,9 @@ sealed interface Screen {
     data object Settings : Screen
 }
 
+/** 設計書 §14: 漏洩チェックの結果。項目名と件数だけで、パスワードは持たない。 */
+data class AuditReport(val at: Long, val breached: List<AuditItem>, val cleanCount: Int, val skippedCount: Int)
+
 /**
  * 画面の状態。保管庫への操作はすべて1本のスレッドに順番に流す（同期中の編集と競合しない）。
  * 画面に出すメッセージには、パスワードや URL・トークンの値を入れない。
@@ -37,6 +46,8 @@ class AppModel(ctx: Context) {
     private val repo = VaultRepository(LocalStore(File(ctx.filesDir, "vault")))
     val settings = AppSettings(ctx)
     val biometric = BiometricVault(ctx)
+    val auditLog = AuditLog(ctx)
+    private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val io: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(1)
 
     var screen by mutableStateOf<Screen>(if (repo.hasVault) Screen.Unlock else Screen.Setup)
@@ -45,6 +56,10 @@ class AppModel(ctx: Context) {
     var message by mutableStateOf<String?>(null)
     var pendingSync by mutableStateOf(repo.pendingSync)
     var lastSync by mutableStateOf<String?>(null)
+    var auditing by mutableStateOf(false)
+    var auditReport by mutableStateOf<AuditReport?>(null)
+    // 詳細画面の「最終チェック」を、結果が変わったときに描き直すための印
+    var auditStamp by mutableStateOf(0)
     private var backgroundedAt = 0L
 
     private suspend fun <T> op(block: VaultRepository.() -> T): T {
@@ -129,14 +144,18 @@ class AppModel(ctx: Context) {
     }
 
     suspend fun save(e: Entry) = guarded("保存に失敗しました") {
+        val changed = repo.entry(e.uuid)?.password != e.password
         op { upsert(e) }
         refresh()
+        // 設計書 §14-3: パスワードが新しくなったときは、保存の直後に1回だけ調べる
+        if (changed && e.password.isNotEmpty()) checkOneInBackground(e)
         screen = Screen.Detail(e.uuid)
         if (settings.syncConfigured) sync()
     }
 
     suspend fun delete(uuid: String) = guarded("削除に失敗しました") {
         op { delete(uuid) }
+        auditLog.forget(uuid)
         refresh()
         screen = Screen.List
         if (settings.syncConfigured) sync()
@@ -180,6 +199,44 @@ class AppModel(ctx: Context) {
         }
         refresh()
     }
+
+    /** 設計書 §14-2: 設定画面の「漏洩チェック」。全項目を調べ、結果を端末内に記録する。 */
+    suspend fun audit() {
+        if (auditing || !repo.isUnlocked) return
+        auditing = true
+        message = null
+        try {
+            val target = entries
+            val items = withContext(Dispatchers.IO) { BreachChecker(http = auditHttp()).audit(target) }
+            val at = System.currentTimeMillis()
+            items.forEach { auditLog.record(it.uuid, it.result, at) }
+            auditReport = AuditReport(
+                at = at,
+                breached = items.filter { it.result is BreachResult.Breached },
+                cleanCount = items.count { it.result == BreachResult.Clean },
+                skippedCount = items.count { it.result == BreachResult.Skipped },
+            )
+            auditStamp++
+        } catch (e: Exception) {
+            message = "漏洩チェックに失敗しました"
+        } finally {
+            auditing = false
+        }
+    }
+
+    private fun checkOneInBackground(e: Entry) {
+        background.launch {
+            val result = runCatching { BreachChecker(http = auditHttp()).check(e.password) }.getOrDefault(BreachResult.Skipped)
+            auditLog.record(e.uuid, result, System.currentTimeMillis())
+            auditStamp++
+        }
+    }
+
+    // 設計書 §14: 通信できないときに長く待たせない
+    private fun auditHttp() = okhttp3.OkHttpClient.Builder()
+        .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+        .callTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .build()
 
     // 設計書 §5-3: 自動ロック。画面オフは即時、バックグラウンドは設定の時間を過ぎたら
     fun onBackground() {

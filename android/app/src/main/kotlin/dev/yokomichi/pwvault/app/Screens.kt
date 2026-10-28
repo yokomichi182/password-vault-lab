@@ -43,6 +43,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import dev.yokomichi.pwvault.core.BreachResult
 import dev.yokomichi.pwvault.core.Entry
 import dev.yokomichi.pwvault.core.HistoryItem
 import dev.yokomichi.pwvault.core.PasswordGenerator
@@ -242,6 +243,7 @@ private fun DetailScreen(m: AppModel, uuid: String) {
         if (e.androidPackage.isNotEmpty()) Field("Android アプリ", e.androidPackage) { }
         if (e.notes.isNotEmpty()) Field("メモ", e.notes) { }
         Text("コピーした内容は 30 秒後に消えます", style = MaterialTheme.typography.bodySmall)
+        AuditLine(m, e)
         OutlinedButton({ confirmDelete = true }) { Text("削除") }
     }
     if (confirmDelete) {
@@ -253,6 +255,24 @@ private fun DetailScreen(m: AppModel, uuid: String) {
             dismissButton = { TextButton({ confirmDelete = false }) { Text("やめる") } },
         )
     }
+}
+
+/** 設計書 §14-2: 項目の詳細に「最終チェックの日時と結果」を出す。 */
+@Composable
+private fun AuditLine(m: AppModel, e: Entry) {
+    m.auditStamp // 結果が変わったら描き直す
+    val last = m.auditLog.last(e.uuid)
+    val text = when {
+        last == null -> "漏洩チェック: 未チェック"
+        else -> {
+            val at = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.JAPAN).format(java.util.Date(last.checkedAt))
+            val result = if (last.count > 0) "漏洩済み(${last.count} 回出現)" else "漏洩は見つかりませんでした"
+            // パスワードを変えたあとの結果は、いまのパスワードのものではない
+            val stale = if (e.modifiedAt > last.checkedAt) "(その後に編集されています。再チェックしてください)" else ""
+            "漏洩チェック: $at  $result$stale"
+        }
+    }
+    Text(text, style = MaterialTheme.typography.bodySmall)
 }
 
 @Composable
@@ -425,6 +445,15 @@ private fun SettingsScreen(m: AppModel) {
             Text("この端末では生体認証を使えません(指紋などの登録がありません)。", style = MaterialTheme.typography.bodySmall)
         }
         HorizontalDivider()
+        Text("漏洩チェック", style = MaterialTheme.typography.titleMedium)
+        Button({ scope.launch { m.audit() } }, enabled = !m.auditing && m.entries.isNotEmpty()) {
+            Text(if (m.auditing) "チェック中…" else "漏洩チェック")
+        }
+        Text(
+            "パスワードの SHA-1 の先頭 5 文字だけを Have I Been Pwned に送ります。パスワード自体は送りません。",
+            style = MaterialTheme.typography.bodySmall,
+        )
+        HorizontalDivider()
         Text("データ", style = MaterialTheme.typography.titleMedium)
         OutlinedButton(
             { apply(); scope.launch { history = m.history() } },
@@ -435,6 +464,30 @@ private fun SettingsScreen(m: AppModel) {
         info?.let { Text(it) }
     }
 
+    m.auditReport?.let { r ->
+        AlertDialog(
+            onDismissRequest = { m.auditReport = null },
+            title = { Text(if (r.breached.isEmpty()) "漏洩済みの項目はありません" else "漏洩済み ${r.breached.size} 件") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LazyColumn(Modifier.weight(1f, fill = false)) {
+                        items(r.breached) { b ->
+                            val n = (b.result as BreachResult.Breached).count
+                            Text("${b.title.ifEmpty { "(無題)" }}  $n 回出現", Modifier.padding(vertical = 4.dp))
+                        }
+                    }
+                    Text("問題なし ${r.cleanCount} 件", style = MaterialTheme.typography.bodySmall)
+                    if (r.skippedCount > 0) {
+                        Text(
+                            "調べられなかった項目 ${r.skippedCount} 件(通信できませんでした。漏洩なしという意味ではありません)",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            },
+            confirmButton = { TextButton({ m.auditReport = null }) { Text("閉じる") } },
+        )
+    }
     history?.let { list ->
         AlertDialog(
             onDismissRequest = { history = null },

@@ -3,6 +3,7 @@ package dev.yokomichi.pwvault.app
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import dev.yokomichi.pwvault.core.BreachResult
 import android.os.Handler
 import android.os.Looper
 import android.os.PersistableBundle
@@ -65,6 +66,34 @@ class AppSettings(ctx: Context) {
         get() = prefs.getInt("autoLock", 5)
         set(v) = prefs.edit().putInt("autoLock", v).apply()
     val syncConfigured get() = syncUrl.isNotEmpty() && syncToken.isNotEmpty()
+}
+
+/**
+ * 設計書 §14-3: 漏洩チェックの最終結果。端末内のローカルの設定にだけ置き、保管庫には書かない。
+ * 持つのは項目の UUID・日時・出現回数(0 は漏洩なし)だけで、パスワードもそのハッシュも持たない。
+ */
+class AuditLog(ctx: Context) {
+    private val prefs = ctx.getSharedPreferences("audit", Context.MODE_PRIVATE)
+
+    data class Last(val checkedAt: Long, val count: Int)
+
+    fun last(uuid: String): Last? = prefs.getString(uuid, null)?.split(',')?.let {
+        val at = it.getOrNull(0)?.toLongOrNull()
+        val n = it.getOrNull(1)?.toIntOrNull()
+        if (at != null && n != null) Last(at, n) else null
+    }
+
+    /** 調べられなかった(Skipped)項目は記録しない。前回の結果を消さないため。 */
+    fun record(uuid: String, result: BreachResult, at: Long) {
+        val n = when (result) {
+            BreachResult.Clean -> 0
+            is BreachResult.Breached -> result.count
+            BreachResult.Skipped -> return
+        }
+        prefs.edit().putString(uuid, "$at,$n").apply()
+    }
+
+    fun forget(uuid: String) = prefs.edit().remove(uuid).apply()
 }
 
 /** 設計書 §5-3: コピーして 30 秒後に消す。Android 13 以降は「機密」の印を付ける。 */
