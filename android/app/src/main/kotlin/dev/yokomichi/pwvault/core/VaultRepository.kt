@@ -117,6 +117,25 @@ class VaultRepository(
         commit(data.copy(entries = data.entries + list.map { it.copy(modifiedAt = now()) }))
     }
 
+    /**
+     * 設計書 §3-3: 履歴の版(暗号文)の中身に戻す。手元の版は先に退避する。
+     * 戻した項目は「いまの更新」として積み直し、いまあって戻し先に無い項目は削除として記録する。
+     * こうしておくと、次の同期でサーバー側の新しい版のマージに負けない。
+     */
+    fun restoreFrom(bytes: ByteArray, label: String) {
+        val current = checkUnlocked()
+        val old = try { KdbxVault.open(bytes, checkNotNull(master)).data() } catch (e: Exception) { throw WrongPasswordException() }
+        store.backup(current.encode(), "%013d-restore-%s".format(now(), label))
+        val t = now()
+        val oldIds = old.entries.map { it.uuid }.toSet()
+        val removed = data.entries.filter { it.uuid !in oldIds }.associate { it.uuid to t }
+        val deleted = (data.deleted + old.deleted).filterKeys { it !in oldIds } + removed
+        commit(VaultData(old.entries.map { it.copy(modifiedAt = t + 1) }, deleted))
+    }
+
+    /** 生体認証の登録用。マスターパスワードを返すので、呼び出し側は保管庫の暗号化以外に使わない。 */
+    fun masterForBiometric(): String = checkUnlocked().let { checkNotNull(master) }
+
     /** 書き出し用の .kdbx（暗号化済み）。 */
     fun exportKdbx(): ByteArray = checkUnlocked().encode()
 

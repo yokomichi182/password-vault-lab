@@ -7,9 +7,9 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.Bundle
 import android.view.WindowManager
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
+import androidx.fragment.app.FragmentActivity
 import dev.yokomichi.pwvault.app.App
 import dev.yokomichi.pwvault.app.AppModel
 
@@ -29,7 +29,8 @@ class PwApplication : Application() {
     }
 }
 
-class MainActivity : ComponentActivity() {
+// BiometricPrompt が FragmentActivity を要るため
+class MainActivity : FragmentActivity() {
     private val model get() = (application as PwApplication).model
 
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -22,12 +22,27 @@ private const val MASTER = "master-$CANARY-dummy"
 private class FakeWorker : Dispatcher() {
     var version = 0
     var blob: ByteArray? = null
-    override fun dispatch(request: RecordedRequest): MockResponse = when (request.method) {
+    val history = mutableMapOf<Int, ByteArray>()
+    override fun dispatch(request: RecordedRequest): MockResponse = when {
+        request.method == "GET" && request.path!!.endsWith("/history") ->
+            MockResponse().setBody(
+                history.keys.sortedDescending().joinToString(",", "[", "]") {
+                    """{"version":$it,"sha256":"x","device":"dev\"$it","created_at":"2026-10-28 00:00:0$it","size":${history[it]!!.size}}"""
+                },
+            )
+        request.method == "GET" && "/history/" in request.path!! ->
+            history[request.path!!.substringAfterLast('/').toInt()]
+                ?.let { MockResponse().setBody(Buffer().write(it)) } ?: MockResponse().setResponseCode(404)
+        else -> main(request)
+    }
+
+    private fun main(request: RecordedRequest): MockResponse = when (request.method) {
         "GET" -> if (blob == null) MockResponse().setResponseCode(404)
         else MockResponse().setHeader("x-vault-version", version.toString()).setBody(Buffer().write(blob!!))
         "PUT" -> if (request.getHeader("If-Match")?.toIntOrNull() == version) {
             version++
             blob = request.body.readByteArray()
+            history[version] = blob!!
             MockResponse().setBody("""{"version":$version}""")
         } else MockResponse().setResponseCode(409).setBody("""{"version":$version}""")
         else -> MockResponse().setResponseCode(405)
@@ -163,5 +178,48 @@ class VaultRepositoryTest {
         assertThrows(IllegalStateException::class.java) { r.upsert(item(2)) }
         val raw = String(File(tmp, "a/vault.kdbx").readBytes(), Charsets.ISO_8859_1)
         assertFalse(CANARY in raw)
+    }
+
+    @Test
+    fun 履歴の一覧と過去の版を取得できる() {
+        val r = repo("a"); r.create(MASTER); r.upsert(item(1)); r.sync(client("a"))
+        r.upsert(item(2)); r.sync(client("a"))
+        val h = client("a").history()
+        assertEquals(listOf(2, 1), h.map { it.version })
+        assertEquals("dev\"2", h[0].device)
+        assertTrue(client("a").getVersion(1).isNotEmpty())
+        assertThrows(SyncException::class.java) { client("a").getVersion(9) }
+    }
+
+    @Test
+    fun 履歴から復元すると_以後の追加は消え_削除した項目は戻り_次の同期で他端末にも届く() {
+        val a = repo("a"); a.create(MASTER); a.upsert(item(1)); a.upsert(item(2)); a.sync(client("a"))   // 版1
+        a.delete(item(2).uuid); a.upsert(item(3)); a.upsert(item(1).copy(title = "changed")); a.sync(client("a")) // 版2
+        val b = repo("b"); b.importKdbx(worker.blob!!, MASTER); b.sync(client("b"))
+        assertEquals(setOf("changed", "title3"), b.entries.map { it.title }.toSet())
+
+        val versionBefore = worker.version
+        a.restoreFrom(client("a").getVersion(1), "1")
+        assertEquals(setOf("title1", "title2"), a.entries.map { it.title }.toSet())
+        assertTrue(a.pendingSync)
+        a.sync(client("a"))
+        assertEquals(setOf("title1", "title2"), a.entries.map { it.title }.toSet())
+        assertEquals(versionBefore + 1, worker.version)
+
+        b.sync(client("b"))
+        assertEquals(setOf("title1", "title2"), b.entries.map { it.title }.toSet())
+    }
+
+    @Test
+    fun 復元の前に手元の版が退避され_別のマスターパスワードの版は拒む() {
+        val a = repo("a"); a.create(MASTER); a.upsert(item(1)); a.sync(client("a"))
+        val before = LocalStore(File(tmp, "a")).backupNames().size
+        a.restoreFrom(client("a").getVersion(1), "1")
+        assertEquals(before + 1, LocalStore(File(tmp, "a")).backupNames().size)
+
+        val other = repo("o"); other.create("other-$CANARY"); other.upsert(item(9))
+        val foreign = other.exportKdbx()
+        assertThrows(WrongPasswordException::class.java) { a.restoreFrom(foreign, "x") }
+        assertEquals(listOf("title1"), a.entries.map { it.title })
     }
 }

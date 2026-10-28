@@ -4,6 +4,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 
 /** 設計書 §3-2: Worker の同期 API を呼ぶ。送るのは暗号化済みの保管庫ファイルだけ。 */
 sealed interface PutResult {
@@ -15,6 +16,9 @@ sealed interface GetResult {
     data object Empty : GetResult
     class Found(val version: Int, val bytes: ByteArray) : GetResult
 }
+
+/** 設計書 §3-2: 履歴の1行。device は書き込んだ端末名、createdAt はサーバーが付けた日時。 */
+data class HistoryItem(val version: Int, val device: String, val createdAt: String, val size: Long)
 
 /** メッセージにトークンや URL を入れない。 */
 class SyncException(message: String) : Exception(message)
@@ -58,6 +62,28 @@ class SyncClient(
                 409 -> PutResult.Conflict(version ?: throw SyncException("版の情報がありません"))
                 else -> throw SyncException("同期に失敗しました (${res.code})")
             }
+        }
+    }
+
+    /** 履歴の一覧（新しい版が先）。 */
+    fun history(): List<HistoryItem> {
+        val req = Request.Builder().url("${url()}/history").header("Authorization", "Bearer $token").build()
+        http.newCall(req).execute().use { res ->
+            if (res.code != 200) throw SyncException("履歴を取得できませんでした (${res.code})")
+            val arr = try { JSONArray(res.body!!.string()) } catch (e: Exception) { throw SyncException("履歴の形式が正しくありません") }
+            return (0 until arr.length()).map {
+                val o = arr.getJSONObject(it)
+                HistoryItem(o.getInt("version"), o.optString("device"), o.optString("created_at"), o.optLong("size"))
+            }
+        }
+    }
+
+    /** 過去の版の保管庫ファイル(暗号文)を取得する。 */
+    fun getVersion(version: Int): ByteArray {
+        val req = Request.Builder().url("${url()}/history/$version").header("Authorization", "Bearer $token").build()
+        http.newCall(req).execute().use { res ->
+            if (res.code != 200) throw SyncException("過去の版を取得できませんでした (${res.code})")
+            return res.body!!.bytes()
         }
     }
 }

@@ -26,8 +26,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +44,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.yokomichi.pwvault.core.Entry
+import dev.yokomichi.pwvault.core.HistoryItem
 import dev.yokomichi.pwvault.core.PasswordGenerator
 import kotlinx.coroutines.launch
 
@@ -129,8 +132,28 @@ private fun SetupScreen(m: AppModel) {
 
 @Composable
 private fun UnlockScreen(m: AppModel) {
+    val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     var master by remember { mutableStateOf("") }
+    val bio = m.biometric.enabled
+    // 設計書 §5-3: 生体認証で取り出したマスターパスワードで開く
+    fun unlockWithBiometric() {
+        val activity = ctx.findActivity() ?: return
+        val cipher = m.biometric.decryptCipher()
+        if (cipher == null) {
+            m.message = "生体認証の登録が無効になりました。マスターパスワードで開いて、設定で登録し直してください"
+            return
+        }
+        authenticate(
+            activity, cipher, "保管庫を開く",
+            onSuccess = { c ->
+                val pw = m.biometric.open(c)
+                if (pw == null) m.message = "生体認証で開けませんでした" else scope.launch { m.unlock(pw) }
+            },
+            onFailure = { if (it.isNotEmpty()) m.message = it },
+        )
+    }
+    LaunchedEffect(Unit) { if (bio) unlockWithBiometric() }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text("ロック解除", style = MaterialTheme.typography.headlineSmall)
         PasswordField(master, { master = it }, "マスターパスワード")
@@ -143,6 +166,7 @@ private fun UnlockScreen(m: AppModel) {
             },
             enabled = master.isNotEmpty() && !m.busy,
         ) { Text("開く") }
+        if (bio) OutlinedButton({ unlockWithBiometric() }, enabled = !m.busy) { Text("生体認証で開く") }
     }
 }
 
@@ -323,7 +347,7 @@ private fun GeneratorDialog(onUse: (String) -> Unit, onDismiss: () -> Unit) {
     )
 }
 
-/** 設計書 §5-2 の 6: 設定。履歴からの復元は次の段で追加する。 */
+/** 設計書 §5-2 の 6: 設定。 */
 @Composable
 private fun SettingsScreen(m: AppModel) {
     val ctx = LocalContext.current
@@ -335,6 +359,26 @@ private fun SettingsScreen(m: AppModel) {
     var device by remember { mutableStateOf(s.deviceName) }
     var minutes by remember { mutableStateOf(s.autoLockMinutes.toString()) }
     var info by remember { mutableStateOf<String?>(null) }
+    var bioOn by remember { mutableStateOf(m.biometric.enabled) }
+    var history by remember { mutableStateOf<List<HistoryItem>?>(null) }
+    var restoreTarget by remember { mutableStateOf<HistoryItem?>(null) }
+    fun setBiometric(on: Boolean) {
+        if (!on) {
+            m.biometric.disable()
+            bioOn = false
+            return
+        }
+        val activity = ctx.findActivity() ?: return
+        val master = m.masterForBiometric() ?: return
+        authenticate(
+            activity, m.biometric.encryptCipher(), "生体認証を登録",
+            onSuccess = { c ->
+                m.biometric.store(c, master)
+                bioOn = true
+            },
+            onFailure = { if (it.isNotEmpty()) info = it },
+        )
+    }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { u ->
         if (u != null) scope.launch {
             val bytes = m.export() ?: return@launch
@@ -370,9 +414,57 @@ private fun SettingsScreen(m: AppModel) {
         )
         Text("画面を消したときは、すぐにロックします。", style = MaterialTheme.typography.bodySmall)
         HorizontalDivider()
+        Text("ロック解除", style = MaterialTheme.typography.titleMedium)
+        if (m.biometric.available()) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Switch(bioOn, { setBiometric(it) })
+                Text("生体認証で開く")
+            }
+            Text("指紋などを登録し直すと無効になります。そのときはマスターパスワードで開いて登録し直してください。", style = MaterialTheme.typography.bodySmall)
+        } else {
+            Text("この端末では生体認証を使えません(指紋などの登録がありません)。", style = MaterialTheme.typography.bodySmall)
+        }
+        HorizontalDivider()
         Text("データ", style = MaterialTheme.typography.titleMedium)
+        OutlinedButton(
+            { apply(); scope.launch { history = m.history() } },
+            enabled = !m.busy && m.settings.syncConfigured,
+        ) { Text("履歴から復元") }
         OutlinedButton({ exportLauncher.launch("pwvault.kdbx") }) { Text(".kdbx を書き出す(暗号化済み)") }
         OutlinedButton({ csvLauncher.launch(arrayOf("text/*", "*/*")) }) { Text("CSV を取り込む(Chrome / Bitwarden)") }
         info?.let { Text(it) }
+    }
+
+    history?.let { list ->
+        AlertDialog(
+            onDismissRequest = { history = null },
+            title = { Text("復元する版を選ぶ") },
+            text = {
+                if (list.isEmpty()) Text("履歴がありません")
+                else LazyColumn {
+                    items(list) { h ->
+                        Column(Modifier.fillMaxWidth().clickable { restoreTarget = h; history = null }.padding(vertical = 8.dp)) {
+                            Text("版 ${h.version}  ${h.createdAt}")
+                            Text("${h.device}  ${h.size / 1024} KB", style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton({ history = null }) { Text("閉じる") } },
+        )
+    }
+    restoreTarget?.let { h ->
+        AlertDialog(
+            onDismissRequest = { restoreTarget = null },
+            title = { Text("版 ${h.version} に戻しますか") },
+            text = { Text("いまの内容は端末内に退避します。戻した内容は、同期で他の端末にも反映されます。") },
+            confirmButton = {
+                TextButton({
+                    restoreTarget = null
+                    scope.launch { info = m.restore(h) }
+                }) { Text("戻す") }
+            },
+            dismissButton = { TextButton({ restoreTarget = null }) { Text("やめる") } },
+        )
     }
 }

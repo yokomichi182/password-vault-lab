@@ -5,6 +5,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.yokomichi.pwvault.core.CsvImport
+import dev.yokomichi.pwvault.core.HistoryItem
 import dev.yokomichi.pwvault.core.Entry
 import dev.yokomichi.pwvault.core.LocalStore
 import dev.yokomichi.pwvault.core.SyncClient
@@ -35,6 +36,7 @@ sealed interface Screen {
 class AppModel(ctx: Context) {
     private val repo = VaultRepository(LocalStore(File(ctx.filesDir, "vault")))
     val settings = AppSettings(ctx)
+    val biometric = BiometricVault(ctx)
     private val io: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(1)
 
     var screen by mutableStateOf<Screen>(if (repo.hasVault) Screen.Unlock else Screen.Setup)
@@ -90,6 +92,33 @@ class AppModel(ctx: Context) {
         refresh()
         screen = Screen.List
         if (settings.syncConfigured) sync()
+    }
+
+    /** 生体認証の登録。保管庫が開いているときだけ、マスターパスワードを取り出して渡す。 */
+    fun masterForBiometric(): String? = if (repo.isUnlocked) repo.masterForBiometric() else null
+
+    suspend fun history(): List<HistoryItem>? = try {
+        withContext(io) { SyncClient(settings.syncUrl, settings.syncToken, "main", settings.deviceName).history() }
+    } catch (e: Exception) {
+        message = "履歴を取得できませんでした"
+        null
+    }
+
+    /** 設計書 §3-3: 履歴の版に戻し、そのまま同期して他の端末にも反映する。 */
+    suspend fun restore(item: HistoryItem): String {
+        try {
+            val bytes = withContext(io) {
+                SyncClient(settings.syncUrl, settings.syncToken, "main", settings.deviceName).getVersion(item.version)
+            }
+            op { restoreFrom(bytes, item.version.toString()) }
+        } catch (e: WrongPasswordException) {
+            return "この版は、いまのマスターパスワードで開けませんでした"
+        } catch (e: Exception) {
+            return "復元できませんでした"
+        }
+        refresh()
+        sync()
+        return "版 ${item.version} の内容に戻しました(戻す前の版は端末内に退避しています)"
     }
 
     fun lock() {
