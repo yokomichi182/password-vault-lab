@@ -67,6 +67,10 @@ describe("認証", () => {
     const res = await call("/vaults/main", { token: null, headers: { Authorization: TOKEN_MAIN } });
     expect(res.status).toBe(401);
   });
+  it("未知のパスと不正な保管庫名も認証なしでは 401", async () => {
+    expect((await call("/", { token: null })).status).toBe(401);
+    expect((await call("/vaults/BAD", { token: null })).status).toBe(401);
+  });
   it("別の保管庫のトークンは 403", async () => {
     expect((await call("/vaults/automation", { token: TOKEN_MAIN })).status).toBe(403);
     expect((await call("/vaults/main", { token: TOKEN_AUTO })).status).toBe(403);
@@ -239,6 +243,28 @@ describe("履歴と世代管理", () => {
 
     const other = (await (await call("/vaults/automation/history", { token: TOKEN_AUTO })).json()) as unknown[];
     expect(other.length).toBe(1);
+  });
+
+  it("最古版の削除に失敗した場合は 51 版目の書き込みもロールバックする", async () => {
+    for (let v = 0; v < 50; v++) {
+      expect((await put("/vaults/main", bytes(2, v & 0xff), String(v))).status).toBe(200);
+    }
+    await env.DB.prepare(
+      `CREATE TRIGGER reject_history_delete
+       BEFORE DELETE ON vault_versions
+       BEGIN
+         SELECT RAISE(ABORT, 'test delete failure');
+       END`,
+    ).run();
+    try {
+      expect((await put("/vaults/main", bytes(2, 50), "50")).status).toBe(500);
+      const state = await env.DB.prepare(
+        "SELECT COUNT(*) AS count, MAX(version) AS latest FROM vault_versions WHERE vault = 'main'",
+      ).first<{ count: number; latest: number }>();
+      expect(state).toEqual({ count: 50, latest: 50 });
+    } finally {
+      await env.DB.exec("DROP TRIGGER IF EXISTS reject_history_delete");
+    }
   });
 });
 

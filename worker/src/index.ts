@@ -1,5 +1,5 @@
-export const MAX_BODY_BYTES = 1_900_000;
-export const KEEP_VERSIONS = 50;
+const MAX_BODY_BYTES = 1_900_000;
+const KEEP_VERSIONS = 50;
 const NAME_RE = /^[a-z0-9-]{1,32}$/;
 
 function json(body: unknown, status = 200, extra: Record<string, string> = {}): Response {
@@ -65,7 +65,7 @@ function toBytes(value: unknown): Uint8Array<ArrayBuffer> {
       new Uint8Array(value.buffer as ArrayBuffer, value.byteOffset, value.byteLength),
     );
   }
-  return new Uint8Array(0);
+  throw new Error("unsupported blob type");
 }
 
 async function latestVersion(db: D1Database, vault: string): Promise<number> {
@@ -148,7 +148,7 @@ async function readBody(request: Request): Promise<Uint8Array<ArrayBuffer> | Res
 
 function isUniqueViolation(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : "";
-  return /UNIQUE|constraint/i.test(msg);
+  return /UNIQUE constraint failed/i.test(msg);
 }
 
 async function putVault(request: Request, env: Env, vault: string): Promise<Response> {
@@ -171,37 +171,38 @@ async function putVault(request: Request, env: Env, vault: string): Promise<Resp
   const next = expected + 1;
   const createdAt = new Date().toISOString();
 
-  let changes = 0;
+  let insertChanges = 0;
   try {
-    const res = await env.DB.prepare(
-      `INSERT INTO vault_versions (vault, version, blob, sha256, device, created_at)
-       SELECT ?1, ?2, ?3, ?4, ?5, ?6
-       WHERE COALESCE((SELECT MAX(version) FROM vault_versions WHERE vault = ?1), 0) = ?7`,
-    )
-      .bind(vault, next, body, sha256, device, createdAt, expected)
-      .run();
-    changes = res.meta.changes;
+    const [insertResult] = await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO vault_versions (vault, version, blob, sha256, device, created_at)
+         SELECT ?1, ?2, ?3, ?4, ?5, ?6
+         WHERE COALESCE((SELECT MAX(version) FROM vault_versions WHERE vault = ?1), 0) = ?7`,
+      ).bind(vault, next, body, sha256, device, createdAt, expected),
+      env.DB.prepare(
+        `DELETE FROM vault_versions
+         WHERE vault = ?1 AND version <= ?2 AND changes() = 1`,
+      ).bind(vault, next - KEEP_VERSIONS),
+    ]);
+    insertChanges = insertResult?.meta.changes ?? 0;
   } catch (e) {
     if (!isUniqueViolation(e)) throw e;
   }
 
-  if (changes !== 1) {
+  if (insertChanges !== 1) {
     return json({ version: await latestVersion(env.DB, vault) }, 409);
   }
 
-  // 保存はもう済んでいる。古い版の削除に失敗しても 500 にせず、次の保存で消す。
-  try {
-    await env.DB.prepare("DELETE FROM vault_versions WHERE vault = ?1 AND version <= ?2")
-      .bind(vault, next - KEEP_VERSIONS)
-      .run();
-  } catch {
-    // 中身を含みうるので、例外の内容は出さない。
-  }
   return json({ version: next });
 }
 
 async function handle(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
+  const auth = await authenticate(request, env);
+  if (!auth.ok) {
+    return err(auth.status, auth.status === 401 ? "unauthorized" : "server misconfigured");
+  }
+
   const parts = url.pathname.split("/").slice(1); // 先頭の "" を除く。末尾スラッシュは "" が残り 404 になる。
   if (parts[0] !== "vaults" || parts.length < 2 || parts.length > 4) return err(404, "not found");
   const name = parts[1]!;
@@ -223,10 +224,6 @@ async function handle(request: Request, env: Env): Promise<Response> {
     return err(405, "method not allowed", { allow: allowed.join(", ") });
   }
 
-  const auth = await authenticate(request, env);
-  if (!auth.ok) {
-    return err(auth.status, auth.status === 401 ? "unauthorized" : "server misconfigured");
-  }
   if (auth.vault !== name) return err(403, "forbidden");
 
   switch (route) {
