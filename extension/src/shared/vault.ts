@@ -1,7 +1,10 @@
 import { argon2id, argon2d } from "hash-wasm";
-import * as kdbxweb from "kdbxweb";
+import * as kdbxwebNs from "kdbxweb";
 import { ENVIRONMENT_FIELD, ITEM_TYPE_FIELD, ItemTypes } from "./constants.ts";
 import { toArrayBuffer } from "./base64.ts";
+
+// CommonJS の読み込み(Playwright など)では名前空間の default に中身が入る
+const kdbxweb = ((kdbxwebNs as unknown as { default?: typeof kdbxwebNs }).default ?? kdbxwebNs) as typeof kdbxwebNs;
 
 // 暗号処理は kdbxweb + hash-wasm(Argon2 の WASM)に任せる。tests/xcheck/check.mjs と同じ使い方。
 let argon2Ready = false;
@@ -36,13 +39,13 @@ export interface VaultItem {
   itemType: string;
 }
 
-function fieldText(value: kdbxweb.KdbxEntryField | undefined): string {
+function fieldText(value: kdbxwebNs.KdbxEntryField | undefined): string {
   if (value === undefined || value === null) return "";
   if (typeof value === "string") return value;
   return value.getText();
 }
 
-function toItem(entry: kdbxweb.KdbxEntry): VaultItem {
+function toItem(entry: kdbxwebNs.KdbxEntry): VaultItem {
   const rawType = fieldText(entry.fields.get(ITEM_TYPE_FIELD));
   return {
     id: entry.uuid.id,
@@ -55,11 +58,11 @@ function toItem(entry: kdbxweb.KdbxEntry): VaultItem {
 }
 
 /** 環境(API キー用)は読まないが、属性名を持っておくために公開する。 */
-export function readEnvironment(entry: kdbxweb.KdbxEntry): string {
+export function readEnvironment(entry: kdbxwebNs.KdbxEntry): string {
   return fieldText(entry.fields.get(ENVIRONMENT_FIELD));
 }
 
-function collect(group: kdbxweb.KdbxGroup, binId: string | undefined, out: kdbxweb.KdbxEntry[]): void {
+function collect(group: kdbxwebNs.KdbxGroup, binId: string | undefined, out: kdbxwebNs.KdbxEntry[]): void {
   if (binId !== undefined && group.uuid.id === binId) return; // ごみ箱の中は一覧に出さない(Android と同じ)
   for (const e of group.entries) out.push(e);
   for (const g of group.groups) collect(g, binId, out);
@@ -71,7 +74,7 @@ export async function openVaultItems(bytes: Uint8Array, masterPassword: string):
   const creds = new kdbxweb.Credentials(kdbxweb.ProtectedValue.fromString(masterPassword));
   const db = await kdbxweb.Kdbx.load(toArrayBuffer(bytes), creds);
   const binUuid = db.meta.recycleBinUuid;
-  const entries: kdbxweb.KdbxEntry[] = [];
+  const entries: kdbxwebNs.KdbxEntry[] = [];
   collect(db.getDefaultGroup(), binUuid && !binUuid.empty ? binUuid.id : undefined, entries);
   return entries.map(toItem);
 }
