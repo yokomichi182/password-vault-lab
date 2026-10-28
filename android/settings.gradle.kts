@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "pwvault"
-include(":app")
+include(":app", ":testlogin")

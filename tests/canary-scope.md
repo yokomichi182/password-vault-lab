@@ -8,7 +8,7 @@
 | Workerのログ | `wrangler dev` の標準出力と標準エラーを一時ファイルへ保存して検索する | ローカルのみ実施。リモートへのデプロイは禁止 |
 | `chrome.storage.local` | 保存内容を列挙して検索する | 対象なし |
 | IndexedDB | データベースとオブジェクトストアを列挙して検索する | 対象なし |
-| Androidのlogcat | 対象アプリのログを取得して検索する | 対象なし |
+| Androidのlogcat | `adb -s emulator-5554 logcat -d` の全体(アプリのプロセスと `system_server` を含む)を、一時ファイルに取らずにその場で `grep -c CANARY-7f3e9a1c` で検索する。`-b all` でも確かめる | フェーズ2から実施 |
 | 作業フォルダのファイル | テスト後に `npm run scan:canary` を実行する | 実施 |
 
 作業フォルダは次の条件で探査します。

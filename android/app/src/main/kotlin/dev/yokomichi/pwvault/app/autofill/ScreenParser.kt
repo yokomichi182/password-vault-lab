@@ -33,7 +33,7 @@ object ScreenParser {
     // 暴走した画面で固まらないための上限
     private const val MAX_NODES = 20_000
 
-    private class Item(val node: AssistStructure.ViewNode, val hidden: Boolean, val noExclude: Boolean)
+    private class Item(val node: AssistStructure.ViewNode, val hidden: Boolean, val noExclude: Boolean, val domain: String? = null)
 
     /** 画面を上から順に走査する。[withValues] が true のときだけ、入力された文字を読む。 */
     fun parse(structure: AssistStructure, withValues: Boolean, ignoreVisibility: Boolean = false): ParsedScreen {
@@ -50,10 +50,12 @@ object ScreenParser {
             val important = node.importantForAutofill
             val noExclude = item.noExclude || important == AutofillFields.IMPORTANT_NO_EXCLUDE_DESCENDANTS
             val id = node.autofillId
+            // Chrome は webDomain を欄でなく祖先の節に付けることがあるので、最も近い祖先のものを引き継ぐ
+            val domain = node.webDomain?.takeIf { it.isNotBlank() } ?: item.domain
             if (id != null && node.autofillType == View.AUTOFILL_TYPE_TEXT) {
-                fields += ParsedField(toInfo(node, id, hidden, noExclude, important), node.webDomain?.takeIf { it.isNotBlank() }, valueOf(node, withValues))
+                fields += ParsedField(toInfo(node, id, hidden, noExclude, important), domain, valueOf(node, withValues))
             }
-            for (c in node.childCount - 1 downTo 0) stack.addLast(Item(node.getChildAt(c), hidden, noExclude))
+            for (c in node.childCount - 1 downTo 0) stack.addLast(Item(node.getChildAt(c), hidden, noExclude, domain))
         }
         return ParsedScreen(structure.activityComponent.packageName, fields)
     }

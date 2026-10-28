@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tobari autofill test page</title>
+</head>
+<body>
+<h1>Tobari autofill test page</h1>
+<p>Fictional data only.</p>
+<form id="f" method="post" action="#" onsubmit="document.getElementById('s').textContent='Submitted'; return false;">
+  <p><label>Username <input id="username" name="username" type="text" autocomplete="username"></label></p>
+  <p><label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label></p>
+  <p><button type="submit">Sign in</button></p>
+</form>
+<p id="s"></p>
+</body>
+</html>
