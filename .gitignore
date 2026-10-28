@@ -4,6 +4,7 @@
 .env.*
 *.jks
 *.keystore
+*.keyx
 local.properties
 secrets/
 

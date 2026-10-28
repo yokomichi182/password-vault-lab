@@ -1,5 +1,9 @@
 {
   "permissions": {
+    "allow": [
+      "Bash(npm install*)",
+      "Bash(git commit*)"
+    ],
     "deny": [
       "Bash(npx wrangler deploy*)",
       "Bash(wrangler deploy*)",
