@@ -1,0 +1,25 @@
+# 秘密情報
+.dev.vars
+.env
+.env.*
+*.jks
+*.keystore
+local.properties
+secrets/
+
+# 保管庫と取り込み用データ（テスト用の架空データは test/fixtures/ にだけ置く）
+*.kdbx
+*.csv
+!**/test/fixtures/*.kdbx
+!**/test/fixtures/*.csv
+
+# ビルド・依存
+node_modules/
+dist/
+.wrangler/
+build/
+.gradle/
+*.apk
+*.aab
+test-results/
+playwright-report/

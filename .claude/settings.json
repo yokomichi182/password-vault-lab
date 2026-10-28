@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(npx wrangler deploy*)",
+      "Bash(wrangler deploy*)",
+      "Bash(npx wrangler login*)",
+      "Bash(wrangler login*)",
+      "Bash(npx wrangler secret put*)",
+      "Bash(wrangler secret put*)",
+      "Bash(*--remote*)",
+      "Bash(*delegate.ps1*)",
+      "Read(./**/.dev.vars)"
+    ]
+  }
+}
