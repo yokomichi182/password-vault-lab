@@ -65,7 +65,7 @@ class BiometricVault(private val ctx: Context) {
             .apply()
     }
 
-    /** 解除用の復号 Cipher。鍵が無効になっていたら登録を消して null を返す。 */
+    /** 解除用の復号 Cipher。鍵が無効になっているか無いときは登録を消し、その他の失敗では登録を残して null を返す。 */
     fun decryptCipher(): Cipher? {
         val iv = prefs.getString(IV, null)?.let { Base64.decode(it, Base64.NO_WRAP) } ?: return null
         return try {
@@ -75,7 +75,7 @@ class BiometricVault(private val ctx: Context) {
             disable()
             null
         } catch (e: Exception) {
-            disable()
+            // 一時的な失敗では登録を消さない
             null
         }
     }
