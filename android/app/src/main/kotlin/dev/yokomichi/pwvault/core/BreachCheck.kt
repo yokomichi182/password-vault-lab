@@ -30,8 +30,14 @@ class BreachChecker(
     private var lastRequestAt = 0L
 
     /** 1件を調べる。通信に失敗したら Skipped。 */
-    fun check(password: String): BreachResult {
-        val hash = sha1Hex(password)
+    fun check(password: String): BreachResult = checkHash(sha1Hex(password))
+
+    /**
+     * SHA-1（大文字16進40桁）から1件を調べる。バックグラウンドへはパスワードでなくハッシュだけを渡すための入口。
+     * 通信に失敗したら Skipped。
+     */
+    fun checkHash(hash: String): BreachResult {
+        require(hash.length == 40)
         val suffixes = try {
             fetchRange(hash.substring(0, 5))
         } catch (e: IOException) {

@@ -139,4 +139,28 @@ class BreachCheckTest {
         assertFalse(text.contains(CANARY))
         assertFalse(text.contains(LEAKED))
     }
+
+    @Test
+    fun `ハッシュを渡す入口でも同じ結果になり、送るのは先頭5文字だけ`() {
+        serve(LEAKED, 9)
+        val hash = BreachChecker.sha1Hex(LEAKED)
+        assertEquals(BreachResult.Breached(9), checker().checkHash(hash))
+        assertEquals(BreachResult.Clean, checker().checkHash(BreachChecker.sha1Hex(FINE)))
+        val r = seen[0]
+        assertEquals("/range/${hash.substring(0, 5)}", r.path)
+        assertFalse((r.requestLine + r.headers.toString()).contains(hash.substring(5)))
+    }
+
+    @Test
+    fun `ハッシュの入口は通信できないときスキップと返す`() {
+        val c = checker()
+        server.shutdown()
+        assertEquals(BreachResult.Skipped, c.checkHash(BreachChecker.sha1Hex(LEAKED)))
+    }
+
+    @Test
+    fun `40桁でないハッシュは受け付けない`() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException::class.java) { checker().checkHash("ABC") }
+        assertEquals(0, seen.size)
+    }
 }
