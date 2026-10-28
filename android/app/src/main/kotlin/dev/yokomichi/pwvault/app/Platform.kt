@@ -3,7 +3,10 @@ package dev.yokomichi.pwvault.app
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import dev.yokomichi.pwvault.core.AuditRecorder
+import dev.yokomichi.pwvault.core.BreachNotifier
 import dev.yokomichi.pwvault.core.BreachResult
+import dev.yokomichi.pwvault.R
 import android.os.Handler
 import android.os.Looper
 import android.os.PersistableBundle
@@ -65,6 +68,10 @@ class AppSettings(ctx: Context) {
     var autoLockMinutes: Int
         get() = prefs.getInt("autoLock", 5)
         set(v) = prefs.edit().putInt("autoLock", v).apply()
+    /** 設計書 §14-2: ロック解除時の自動チェック。既定はオフ。 */
+    var autoAudit: Boolean
+        get() = prefs.getBoolean("autoAudit", false)
+        set(v) = prefs.edit().putBoolean("autoAudit", v).apply()
     val syncConfigured get() = syncUrl.isNotEmpty() && syncToken.isNotEmpty()
 }
 
@@ -72,8 +79,14 @@ class AppSettings(ctx: Context) {
  * 設計書 §14-3: 漏洩チェックの最終結果。端末内のローカルの設定にだけ置き、保管庫には書かない。
  * 持つのは項目の UUID・日時・出現回数(0 は漏洩なし)だけで、パスワードもそのハッシュも持たない。
  */
-class AuditLog(ctx: Context) {
+class AuditLog(ctx: Context) : AuditRecorder {
     private val prefs = ctx.getSharedPreferences("audit", Context.MODE_PRIVATE)
+    // 項目の結果(uuid が鍵)とは別のファイルに、前回のチェックの時刻だけを置く
+    private val meta = ctx.getSharedPreferences("audit_meta", Context.MODE_PRIVATE)
+
+    override var lastRunAt: Long
+        get() = meta.getLong("lastRunAt", 0L)
+        set(v) = meta.edit().putLong("lastRunAt", v).apply()
 
     /** validAt: パスワードが変わっていないと分かっている最後の時刻。項目の更新がこれより新しければ古い結果。 */
     data class Last(val checkedAt: Long, val count: Int, val validAt: Long)
@@ -86,13 +99,13 @@ class AuditLog(ctx: Context) {
     }
 
     /** パスワード以外だけを編集したとき。結果はそのまま有効。 */
-    fun touch(uuid: String, at: Long) {
+    override fun touch(uuid: String, at: Long) {
         val l = last(uuid) ?: return
         prefs.edit().putString(uuid, "${l.checkedAt},${l.count},$at").apply()
     }
 
     /** 調べられなかった(Skipped)項目は記録しない。前回の結果を消さないため。 */
-    fun record(uuid: String, result: BreachResult, at: Long) {
+    override fun record(uuid: String, result: BreachResult, at: Long) {
         val n = when (result) {
             BreachResult.Clean -> 0
             is BreachResult.Breached -> result.count
@@ -101,7 +114,7 @@ class AuditLog(ctx: Context) {
         prefs.edit().putString(uuid, "$at,$n,$at").apply()
     }
 
-    fun forget(uuid: String) = prefs.edit().remove(uuid).apply()
+    override fun forget(uuid: String) = prefs.edit().remove(uuid).apply()
 }
 
 /** 設計書 §5-3: コピーして 30 秒後に消す。Android 13 以降は「機密」の印を付ける。 */
@@ -121,5 +134,58 @@ object Clip {
         }
         pending = r
         handler.postDelayed(r, clearAfterMs)
+    }
+}
+
+/** 設計書 §14-2: 自動チェックは Wi-Fi のときだけ。 */
+fun isOnWifi(ctx: Context): Boolean {
+    val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+    val caps = cm.getNetworkCapabilities(cm.activeNetwork ?: return false) ?: return false
+    return caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI)
+}
+
+/** 自動チェックで漏洩を検出したときのシステム通知。項目名と出現回数まで。ロック画面には中身を出さない。 */
+class SystemBreachNotifier(private val ctx: Context) : BreachNotifier {
+    private val nm get() = ctx.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+
+    override fun canNotify(): Boolean {
+        val granted = android.os.Build.VERSION.SDK_INT < 33 ||
+            ctx.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        return granted && nm.areNotificationsEnabled()
+    }
+
+    override fun notifyBreached(items: List<Pair<String, Int>>) {
+        if (items.isEmpty()) return
+        nm.createNotificationChannel(
+            android.app.NotificationChannel(CHANNEL, ctx.getString(R.string.notif_channel), android.app.NotificationManager.IMPORTANCE_DEFAULT),
+        )
+        val shown = items.take(5).joinToString("\n") { (title, n) ->
+            ctx.getString(R.string.audit_seen, title.ifEmpty { ctx.getString(R.string.untitled) }, n)
+        }
+        val more = if (items.size > 5) "\n" + ctx.getString(R.string.notif_more, items.size - 5) else ""
+        val open = android.app.PendingIntent.getActivity(
+            ctx, 0, android.content.Intent(ctx, dev.yokomichi.pwvault.MainActivity::class.java),
+            android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val public = android.app.Notification.Builder(ctx, CHANNEL)
+            .setSmallIcon(R.drawable.ic_launcher_monochrome)
+            .setContentTitle(ctx.getString(R.string.notif_title, items.size))
+            .build()
+        val n = android.app.Notification.Builder(ctx, CHANNEL)
+            .setSmallIcon(R.drawable.ic_launcher_monochrome)
+            .setContentTitle(ctx.getString(R.string.notif_title, items.size))
+            .setContentText(shown.lineSequence().first())
+            .setStyle(android.app.Notification.BigTextStyle().bigText(shown + more))
+            .setVisibility(android.app.Notification.VISIBILITY_PRIVATE)
+            .setPublicVersion(public)
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        nm.notify(NOTIFICATION_ID, n)
+    }
+
+    private companion object {
+        const val CHANNEL = "breach_check"
+        const val NOTIFICATION_ID = 1
     }
 }

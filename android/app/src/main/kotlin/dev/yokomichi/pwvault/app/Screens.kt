@@ -20,6 +20,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -47,6 +48,10 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.yokomichi.pwvault.core.BreachResult
 import dev.yokomichi.pwvault.core.Entry
+import dev.yokomichi.pwvault.core.EntryView
+import dev.yokomichi.pwvault.core.ExpiryState
+import dev.yokomichi.pwvault.core.ItemTypes
+import dev.yokomichi.pwvault.core.KindFilter
 import dev.yokomichi.pwvault.core.HistoryItem
 import dev.yokomichi.pwvault.core.PasswordGenerator
 import kotlinx.coroutines.launch
@@ -56,6 +61,33 @@ private fun readText(ctx: Context, uri: Uri): String =
 
 private fun readBytes(ctx: Context, uri: Uri): ByteArray =
     ctx.contentResolver.openInputStream(uri)!!.use { it.readBytes() }
+
+/** 期限の日付(端末のタイムゾーン)。入力した日の終わりまで有効とする。 */
+private fun expiryText(at: Long?): String =
+    at?.let { java.time.Instant.ofEpochMilli(it).atZone(java.time.ZoneId.systemDefault()).toLocalDate().toString() }.orEmpty()
+
+/** 空は期限なし(null)。形が違うときは Result.failure。 */
+private fun parseExpiry(text: String): Result<Long?> {
+    val t = text.trim()
+    if (t.isEmpty()) return Result.success(null)
+    return runCatching {
+        java.time.LocalDate.parse(t).atTime(23, 59, 59).atZone(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+    }
+}
+
+@Composable
+private fun typeBadge(e: Entry): String = when {
+    e.itemType == ItemTypes.APIKEY -> stringResource(R.string.badge_apikey)
+    !e.isLogin -> stringResource(R.string.badge_other)
+    else -> ""
+}
+
+@Composable
+private fun expiryBadge(e: Entry): String = when (EntryView.expiry(e, System.currentTimeMillis())) {
+    ExpiryState.EXPIRED -> stringResource(R.string.expiry_expired)
+    ExpiryState.SOON -> stringResource(R.string.expiry_soon)
+    else -> ""
+}
 
 @Composable
 fun App(m: AppModel) {
@@ -178,11 +210,8 @@ private fun UnlockScreen(m: AppModel) {
 private fun ListScreen(m: AppModel) {
     val scope = rememberCoroutineScope()
     var q by remember { mutableStateOf("") }
-    val shown = remember(m.entries, q) {
-        val k = q.trim().lowercase()
-        if (k.isEmpty()) m.entries
-        else m.entries.filter { listOf(it.title, it.username, it.url).any { s -> k in s.lowercase() } }
-    }
+    var kind by remember { mutableStateOf(KindFilter.ALL) }
+    val shown = remember(m.entries, q, kind) { EntryView.filter(m.entries, q, kind) }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(stringResource(R.string.vault_count, m.entries.size), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
@@ -192,6 +221,32 @@ private fun ListScreen(m: AppModel) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(q, { q = it }, Modifier.weight(1f), label = { Text(stringResource(R.string.search)) }, singleLine = true)
             Button({ m.screen = Screen.Edit(null) }) { Text(stringResource(R.string.add)) }
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(
+                KindFilter.ALL to R.string.filter_all,
+                KindFilter.PASSWORD to R.string.filter_password,
+                KindFilter.API_KEY to R.string.filter_apikey,
+            ).forEach { (k, label) ->
+                FilterChip(kind == k, { kind = k }, label = { Text(stringResource(label)) })
+            }
+        }
+        m.autoAuditReport?.let { r ->
+            Column(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        stringResource(R.string.auto_audit_banner, r.breached.size),
+                        Modifier.weight(1f), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.titleSmall,
+                    )
+                    TextButton({ m.autoAuditReport = null }) { Text(stringResource(R.string.close)) }
+                }
+                r.breached.forEach { b ->
+                    Text(
+                        stringResource(R.string.audit_seen, b.title.ifEmpty { stringResource(R.string.untitled) }, (b.result as BreachResult.Breached).count),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
         }
         Text(
             when {
@@ -205,6 +260,13 @@ private fun ListScreen(m: AppModel) {
             items(shown, key = { it.uuid }) { e ->
                 Column(Modifier.fillMaxWidth().clickable { m.screen = Screen.Detail(e.uuid) }.padding(vertical = 10.dp)) {
                     Text(e.title.ifEmpty { stringResource(R.string.untitled) }, style = MaterialTheme.typography.titleMedium)
+                    val marks = listOf(typeBadge(e), e.environment, expiryBadge(e)).filter { it.isNotEmpty() }.joinToString(" / ")
+                    if (marks.isNotEmpty()) {
+                        Text(
+                            marks, style = MaterialTheme.typography.labelMedium,
+                            color = if (EntryView.expiry(e, System.currentTimeMillis()) == ExpiryState.EXPIRED) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     Text(listOf(e.username, e.url).filter { it.isNotEmpty() }.joinToString("  "), style = MaterialTheme.typography.bodySmall)
                 }
                 HorizontalDivider()
@@ -238,10 +300,26 @@ private fun DetailScreen(m: AppModel, uuid: String) {
             Text(e.title.ifEmpty { stringResource(R.string.untitled) }, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
             TextButton({ m.screen = Screen.Edit(e.uuid) }) { Text(stringResource(R.string.edit)) }
         }
-        Field(stringResource(R.string.username), e.username) { Clip.copySensitive(ctx, ctx.getString(R.string.username), e.username) }
-        Field(stringResource(R.string.password), if (reveal) e.password else "••••••••••") { Clip.copySensitive(ctx, ctx.getString(R.string.password), e.password) }
+        val isKey = e.itemType == ItemTypes.APIKEY
+        val userLabel = stringResource(if (isKey) R.string.apikey_account else R.string.username)
+        val secretLabel = stringResource(if (isKey) R.string.apikey_key else R.string.password)
+        val typeName = stringResource(
+            when {
+                isKey -> R.string.type_apikey
+                e.isLogin -> R.string.type_password
+                else -> R.string.type_other
+            },
+        )
+        Field(stringResource(R.string.type_label), typeName) { }
+        if (e.environment.isNotEmpty()) Field(stringResource(R.string.environment), e.environment) { }
+        e.expiresAt?.let { at ->
+            val badge = expiryBadge(e)
+            Field(stringResource(R.string.expires_label), expiryText(at) + if (badge.isNotEmpty()) "  ($badge)" else "") { }
+        }
+        Field(userLabel, e.username) { Clip.copySensitive(ctx, userLabel, e.username) }
+        Field(secretLabel, if (reveal) e.password else "••••••••••") { Clip.copySensitive(ctx, secretLabel, e.password) }
         TextButton({ reveal = !reveal }) { Text(if (reveal) stringResource(R.string.hide_password) else stringResource(R.string.show_password)) }
-        Field("URL", e.url) { Clip.copySensitive(ctx, "URL", e.url) }
+        Field(if (isKey) stringResource(R.string.apikey_url) else "URL", e.url) { Clip.copySensitive(ctx, "URL", e.url) }
         if (e.androidPackage.isNotEmpty()) Field(stringResource(R.string.android_app), e.androidPackage) { }
         if (e.notes.isNotEmpty()) Field(stringResource(R.string.notes), e.notes) { }
         Text(stringResource(R.string.copy_note), style = MaterialTheme.typography.bodySmall)
@@ -265,6 +343,8 @@ private fun AuditLine(m: AppModel, e: Entry) {
     m.auditStamp // 結果が変わったら描き直す
     val last = m.auditLog.last(e.uuid)
     val text = when {
+        // 設計書 §14-3: API キーと知らない種類は送らない。「未チェック」ではなく「対象外」と出す
+        !e.isLogin -> stringResource(R.string.audit_not_target)
         last == null -> stringResource(R.string.audit_unchecked)
         else -> {
             val at = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.JAPAN).format(java.util.Date(last.checkedAt))
@@ -301,23 +381,69 @@ private fun EditScreen(m: AppModel, uuid: String?) {
     var pkg by remember { mutableStateOf(base.androidPackage) }
     var notes by remember { mutableStateOf(base.notes) }
     var gen by remember { mutableStateOf(false) }
+    // 種類。空はパスワード。知らない種類(その他)は、選び直さないかぎり文字列のまま保つ
+    var type by remember { mutableStateOf(base.itemType) }
+    var env by remember { mutableStateOf(base.environment) }
+    val initialExpiry = remember { expiryText(base.expiresAt) }
+    var expiry by remember { mutableStateOf(initialExpiry) }
+    val isKey = type == ItemTypes.APIKEY
+    val parsedExpiry = parseExpiry(expiry)
+    val expiryOk = !isKey || parsedExpiry.isSuccess
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(if (uuid == null) stringResource(R.string.add_item) else stringResource(R.string.edit_item), style = MaterialTheme.typography.titleLarge)
-        OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.title)) }, singleLine = true)
-        OutlinedTextField(user, { user = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.username)) }, singleLine = true)
-        PasswordField(pw, { pw = it }, stringResource(R.string.password))
-        OutlinedButton({ gen = true }) { Text(stringResource(R.string.generate_password)) }
-        OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth(), label = { Text("URL") }, singleLine = true)
+        Text(stringResource(R.string.type_label), style = MaterialTheme.typography.labelMedium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(type.isEmpty() || type == ItemTypes.PASSWORD, { type = "" }, label = { Text(stringResource(R.string.type_password)) })
+            FilterChip(isKey, { type = ItemTypes.APIKEY }, label = { Text(stringResource(R.string.type_apikey)) })
+            if (type.isNotEmpty() && type != ItemTypes.PASSWORD && !isKey) {
+                FilterChip(true, { }, label = { Text(stringResource(R.string.type_other)) })
+            }
+        }
+        OutlinedTextField(
+            title, { title = it }, Modifier.fillMaxWidth(),
+            label = { Text(stringResource(if (isKey) R.string.apikey_service else R.string.title)) }, singleLine = true,
+        )
+        OutlinedTextField(
+            user, { user = it }, Modifier.fillMaxWidth(),
+            label = { Text(stringResource(if (isKey) R.string.apikey_account else R.string.username)) }, singleLine = true,
+        )
+        PasswordField(pw, { pw = it }, stringResource(if (isKey) R.string.apikey_key else R.string.password))
+        // API キーには生成ボタンを出さない
+        if (!isKey) OutlinedButton({ gen = true }) { Text(stringResource(R.string.generate_password)) }
+        if (isKey) {
+            OutlinedTextField(env, { env = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.environment)) }, singleLine = true)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                listOf(R.string.env_production, R.string.env_test).forEach { id ->
+                    val v = stringResource(id)
+                    FilterChip(env == v, { env = v }, label = { Text(v) })
+                }
+            }
+            OutlinedTextField(
+                expiry, { expiry = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.expires_input)) }, singleLine = true,
+                isError = !expiryOk, supportingText = if (expiryOk) null else ({ Text(stringResource(R.string.expires_invalid)) }),
+            )
+        }
+        OutlinedTextField(
+            url, { url = it }, Modifier.fillMaxWidth(),
+            label = { Text(if (isKey) stringResource(R.string.apikey_url) else "URL") }, singleLine = true,
+        )
         OutlinedTextField(pkg, { pkg = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.android_package)) }, singleLine = true)
         OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.notes)) }, minLines = 3)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
+                    // 期限は、入力を変えたときだけ書き換える(KeePassXC が付けた時刻をそのまま残す)
+                    val expiresAt = if (isKey && expiry != initialExpiry) parsedExpiry.getOrNull() else base.expiresAt
                     scope.launch {
-                        m.save(base.copy(title = title.trim(), username = user, password = pw, url = url.trim(), androidPackage = pkg.trim(), notes = notes))
+                        m.save(
+                            base.copy(
+                                title = title.trim(), username = user, password = pw, url = url.trim(), androidPackage = pkg.trim(), notes = notes,
+                                itemType = type, environment = env.trim(), expiresAt = expiresAt,
+                            ),
+                        )
                     }
                 },
-                enabled = title.isNotBlank() && !m.busy,
+                enabled = title.isNotBlank() && expiryOk && !m.busy,
             ) { Text(stringResource(R.string.save)) }
             OutlinedButton({ m.screen = if (uuid != null) Screen.Detail(uuid) else Screen.List }) { Text(stringResource(R.string.cancel)) }
         }
@@ -382,6 +508,9 @@ private fun SettingsScreen(m: AppModel) {
     var minutes by remember { mutableStateOf(s.autoLockMinutes.toString()) }
     var info by remember { mutableStateOf<String?>(null) }
     var bioOn by remember { mutableStateOf(m.biometric.enabled) }
+    var autoAuditOn by remember { mutableStateOf(s.autoAudit) }
+    // 通知の許可を求める。許可されなくても、自動チェックの設定はオンのままにする(結果は一覧の上に出る)
+    val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     var history by remember { mutableStateOf<List<HistoryItem>?>(null) }
     var restoreTarget by remember { mutableStateOf<HistoryItem?>(null) }
     fun setBiometric(on: Boolean) {
@@ -455,6 +584,17 @@ private fun SettingsScreen(m: AppModel) {
             stringResource(R.string.audit_privacy),
             style = MaterialTheme.typography.bodySmall,
         )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Switch(autoAuditOn, { on ->
+                autoAuditOn = on
+                s.autoAudit = on
+                if (on && android.os.Build.VERSION.SDK_INT >= 33 &&
+                    ctx.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                ) notifPermission.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            })
+            Text(stringResource(R.string.auto_audit))
+        }
+        Text(stringResource(R.string.auto_audit_note), style = MaterialTheme.typography.bodySmall)
         HorizontalDivider()
         Text(stringResource(R.string.data), style = MaterialTheme.typography.titleMedium)
         OutlinedButton(
@@ -479,6 +619,9 @@ private fun SettingsScreen(m: AppModel) {
                         }
                     }
                     Text(stringResource(R.string.audit_clean_n, r.cleanCount), style = MaterialTheme.typography.bodySmall)
+                    if (r.excludedCount > 0) {
+                        Text(stringResource(R.string.audit_excluded_n, r.excludedCount), style = MaterialTheme.typography.bodySmall)
+                    }
                     if (r.skippedCount > 0) {
                         Text(
                             stringResource(R.string.audit_skipped_n, r.skippedCount),

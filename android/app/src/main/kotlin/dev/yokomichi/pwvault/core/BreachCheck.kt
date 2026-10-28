@@ -49,12 +49,13 @@ class BreachChecker(
     /**
      * 全項目を調べる。同じ先頭5文字は1回の要求で済ませる。
      * 通信できなかったら、残りも待たずに Skipped にする（オフラインで1件ずつ待たない）。
-     * パスワードが空の項目は対象に含めない。
+     * パスワードが空の項目と、種類がパスワードでない項目(isLogin が false)は対象に含めない。
+     * 呼び出し側でも [AuditCoordinator] が先に除くが、ここでも送らないことを保証する(§14-3)。
      */
     fun audit(entries: List<Entry>): List<AuditItem> {
         val cache = HashMap<String, Map<String, Int>?>()
         var offline = false
-        return entries.filter { it.password.isNotEmpty() }.map { e ->
+        return entries.filter { it.isLogin && it.password.isNotEmpty() }.map { e ->
             val hash = sha1Hex(e.password)
             val prefix = hash.substring(0, 5)
             val result = when {

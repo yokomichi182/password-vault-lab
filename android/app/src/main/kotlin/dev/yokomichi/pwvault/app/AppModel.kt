@@ -5,9 +5,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import dev.yokomichi.pwvault.R
-import dev.yokomichi.pwvault.core.AuditItem
+import dev.yokomichi.pwvault.core.AuditCoordinator
+import dev.yokomichi.pwvault.core.AuditReport
 import dev.yokomichi.pwvault.core.BreachChecker
-import dev.yokomichi.pwvault.core.BreachResult
 import dev.yokomichi.pwvault.core.CsvFormatException
 import dev.yokomichi.pwvault.core.CsvImport
 import dev.yokomichi.pwvault.core.HistoryItem
@@ -36,9 +36,6 @@ sealed interface Screen {
     data object Settings : Screen
 }
 
-/** 設計書 §14: 漏洩チェックの結果。項目名と件数だけで、パスワードは持たない。 */
-data class AuditReport(val at: Long, val breached: List<AuditItem>, val cleanCount: Int, val skippedCount: Int)
-
 /**
  * 画面の状態。保管庫への操作はすべて1本のスレッドに順番に流す（同期中の編集と競合しない）。
  * 画面に出すメッセージには、パスワードや URL・トークンの値を入れない。
@@ -50,6 +47,12 @@ class AppModel(ctx: Context) {
     val settings = AppSettings(ctx)
     val biometric = BiometricVault(ctx)
     val auditLog = AuditLog(ctx)
+    // 漏洩チェックの3つの経路(保存後・手動・ロック解除時)は、ここを通して isLogin で絞る
+    private val audits = AuditCoordinator(
+        checker = { BreachChecker(baseUrl = breachBaseUrl(app), http = auditHttp()) },
+        recorder = auditLog,
+        notifier = SystemBreachNotifier(ctx.applicationContext),
+    )
     private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     // 画面の切り替えで取り消されないように、操作の直後の同期はアプリの寿命のスコープで走らせる
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -63,6 +66,8 @@ class AppModel(ctx: Context) {
     var lastSync by mutableStateOf<String?>(null)
     var auditing by mutableStateOf(false)
     var auditReport by mutableStateOf<AuditReport?>(null)
+    // ロック解除時の自動チェックで漏洩が見つかったとき、一覧の上に出す。通知の許可がなくても出る
+    var autoAuditReport by mutableStateOf<AuditReport?>(null)
     // 詳細画面の「最終チェック」を、結果が変わったときに描き直すための印
     var auditStamp by mutableStateOf(0)
     private var backgroundedAt = 0L
@@ -115,6 +120,28 @@ class AppModel(ctx: Context) {
         refresh()
         screen = Screen.List
         if (settings.syncConfigured) appScope.launch { sync() }
+        autoAuditIfDue()
+    }
+
+    /**
+     * 設計書 §14-2: ロック解除のとき、設定が有効で Wi-Fi で前回から 7 日以上なら調べる。
+     * パスワードで開いても生体認証で開いても [unlock] を通るので、同じ条件になる。
+     */
+    private fun autoAuditIfDue() {
+        if (!settings.autoAudit) return
+        val target = entries
+        val enabled = settings.autoAudit
+        val wifi = isOnWifi(app)
+        background.launch {
+            val report = runCatching { audits.runAuto(target, enabled, wifi) }.getOrNull() ?: return@launch
+            // 画面の状態はメインスレッドで書く
+            withContext(Dispatchers.Main) {
+                if (repo.isUnlocked) {
+                    autoAuditReport = report.takeIf { it.breached.isNotEmpty() }
+                    auditStamp++
+                }
+            }
+        }
     }
 
     /** 生体認証の登録。保管庫が開いているときだけ、マスターパスワードを取り出して渡す。 */
@@ -147,17 +174,18 @@ class AppModel(ctx: Context) {
     fun lock() {
         // 復号済みデータの参照を、まず画面側から外す
         entries = emptyList()
+        autoAuditReport = null
         screen = if (repo.hasVault) Screen.Unlock else Screen.Setup
         repo.lock()
     }
 
     suspend fun save(e: Entry) = guarded(t(R.string.err_save)) {
-        val changed = repo.entry(e.uuid)?.password != e.password
+        val old = repo.entry(e.uuid)
         op { upsert(e) }
         refresh()
-        // 設計書 §14-3: パスワードが新しくなったときは、保存の直後に1回だけ調べる
-        if (changed && e.password.isNotEmpty()) checkOneInBackground(e.uuid, BreachChecker.sha1Hex(e.password))
-        else if (!changed) auditLog.touch(e.uuid, System.currentTimeMillis())
+        // 設計書 §14-3: パスワードが新しくなったとき(API キーからの変更を含む)は、保存の直後に1回だけ調べる。
+        // 種類がパスワードでない項目は、SHA-1 も計算せず送らない
+        audits.onSaved(old, e)?.let { checkOneInBackground(e.uuid, it) }
         auditStamp++
         screen = Screen.Detail(e.uuid)
         if (settings.syncConfigured) appScope.launch { sync() }
@@ -220,15 +248,7 @@ class AppModel(ctx: Context) {
         message = null
         try {
             val target = entries
-            val items = withContext(Dispatchers.IO) { BreachChecker(baseUrl = breachBaseUrl(app), http = auditHttp()).audit(target) }
-            val at = System.currentTimeMillis()
-            items.forEach { auditLog.record(it.uuid, it.result, at) }
-            auditReport = AuditReport(
-                at = at,
-                breached = items.filter { it.result is BreachResult.Breached },
-                cleanCount = items.count { it.result == BreachResult.Clean },
-                skippedCount = items.count { it.result == BreachResult.Skipped },
-            )
+            auditReport = withContext(Dispatchers.IO) { audits.auditAll(target) }
             auditStamp++
         } catch (e: Exception) {
             message = t(R.string.err_audit)
@@ -240,9 +260,7 @@ class AppModel(ctx: Context) {
     // 保存の時点で SHA-1 を計算し、バックグラウンドにはハッシュだけを渡す（通信の間、パスワードをメモリに残さない）
     private fun checkOneInBackground(uuid: String, hash: String) {
         background.launch {
-            val result = runCatching { BreachChecker(baseUrl = breachBaseUrl(app), http = auditHttp()).checkHash(hash) }
-                .getOrDefault(BreachResult.Skipped)
-            auditLog.record(uuid, result, System.currentTimeMillis())
+            audits.checkOne(uuid, hash)
             withContext(Dispatchers.Main) { auditStamp++ }
         }
     }
