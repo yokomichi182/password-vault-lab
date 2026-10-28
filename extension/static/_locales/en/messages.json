@@ -1,0 +1,4 @@
+{
+  "extName": { "message": "PW Vault" },
+  "extDescription": { "message": "Autofill from your own sync server. Read-only." }
+}
