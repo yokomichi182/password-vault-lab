@@ -10,9 +10,27 @@ data class Entry(
     val androidPackage: String = "",
     val notes: String = "",
     val modifiedAt: Long,
+    /** 項目の種類(設計書 §2-1)。空はパスワード。知らない値は文字列のまま保つ。 */
+    val itemType: String = "",
+    /** API キーの環境(自由入力)。値ではないので保護しない。 */
+    val environment: String = "",
+    /** 有効期限(UNIX ミリ秒)。null は期限なし。 */
+    val expiresAt: Long? = null,
 ) {
+    /**
+     * 自動入力と漏洩チェックの対象か。種類が空か `password` のときだけ true。
+     * 知らない種類は安全側の「ログイン用ではない」に倒す。すべての面でこの判定を通す。
+     */
+    val isLogin: Boolean get() = itemType.isEmpty() || itemType == ItemTypes.PASSWORD
+
     // パスワードをログやエラーメッセージに出さない
     override fun toString(): String = "Entry(uuid=$uuid, title=$title)"
+}
+
+/** 設計書 §2-1: ItemType 属性の値。Android(kotpass)と PC(kdbxweb)で同じ文字列を使う。 */
+object ItemTypes {
+    const val PASSWORD = "password"
+    const val APIKEY = "apikey"
 }
 
 /** 保管庫の中身。deleted は KDBX の DeletedObjects に当たる（uuid → 削除時刻）。 */

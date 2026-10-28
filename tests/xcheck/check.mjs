@@ -63,6 +63,23 @@ assert.equal(text(jp.fields.get('Notes')), 'メモ\n二行目')
 assert.equal(text(jp.fields.get('URL')), 'https://例.jp/?a=1&b=2')
 ok('日本語・記号・改行が壊れない')
 
+// 種類(設計書 §2-1): password は属性を書かず、apikey は ItemType と Environment と期限が読める
+assert.equal(e1.fields.has('ItemType'), false)
+assert.equal(e1.fields.has('Environment'), false)
+assert.equal(e1.times.expires, false)
+const e4 = byN.get(4)
+assert.ok(e4, 'apikey の項目が見つからない')
+assert.equal(text(e4.fields.get('Title')), 'apikey-svc')
+assert.equal(text(e4.fields.get('ItemType')), 'apikey')
+assert.equal(text(e4.fields.get('Environment')), '本番')
+assert.equal(e4.times.expires, true)
+assert.equal(e4.times.expiryTime.getTime(), 1_900_000_000_000)
+assert.equal(text(e4.fields.get('Password')), `${CANARY}-key4`)
+assert.ok(e4.fields.get('Password') instanceof kdbxweb.ProtectedValue, 'キーは保護属性(Protected)')
+assert.ok(!(e4.fields.get('ItemType') instanceof kdbxweb.ProtectedValue))
+assert.ok(!(e4.fields.get('Environment') instanceof kdbxweb.ProtectedValue))
+ok('apikey の種類・環境・期限が読め、キーは Protected、password の項目には種類の属性が無い')
+
 assert.equal(db.deletedObjects.some((d) => parseInt(hexOf(d.uuid).slice(-4), 16) === 9), true)
 ok('削除記録(DeletedObjects)が読める')
 
@@ -87,6 +104,11 @@ const mk = (group, n, title, pw) => {
 }
 mk(root, 0x11, 'node-root', `${CANARY}-n1`)
 mk(sub, 0x12, 'node-sub', `${CANARY}-n2`)
+const apikey = mk(root, 0x13, 'node-key', `${CANARY}-n3`)
+apikey.fields.set('ItemType', 'apikey')
+apikey.fields.set('Environment', 'テスト')
+apikey.times.expires = true
+apikey.times.expiryTime = new Date(1_900_000_000_000)
 const out = await nodeDb.save()
 fs.writeFileSync(path.join(dir, 'node-made.kdbx'), Buffer.from(out))
 ok('kdbxweb で KDBX4 を作成して保存した(Android 側で検証)')

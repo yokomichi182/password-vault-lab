@@ -9,6 +9,7 @@ import app.keemobile.kotpass.database.encode
 import app.keemobile.kotpass.database.header.KdfParameters
 import app.keemobile.kotpass.models.DeletedObject
 import app.keemobile.kotpass.models.Entry as KpEntry
+import app.keemobile.kotpass.models.EntryFields
 import app.keemobile.kotpass.models.EntryValue
 import app.keemobile.kotpass.models.FormatVersion
 import app.keemobile.kotpass.models.Group
@@ -121,6 +122,9 @@ class KdbxVault private constructor(private val db: KeePassDatabase) {
             )
 
         const val ANDROID_APP_FIELD = "AndroidApp"
+        // 設計書 §2-1: 値(password / apikey)は ItemTypes。Environment は値ではないので保護しない
+        const val ITEM_TYPE_FIELD = "ItemType"
+        const val ENVIRONMENT_FIELD = "Environment"
 
         private fun toEntry(kp: KpEntry): Entry = Entry(
             uuid = kp.uuid.toString(),
@@ -131,7 +135,22 @@ class KdbxVault private constructor(private val db: KeePassDatabase) {
             androidPackage = kp.fields[ANDROID_APP_FIELD]?.content.orEmpty(),
             notes = kp.fields.notes?.content.orEmpty(),
             modifiedAt = (kp.times?.lastModificationTime ?: Instant.EPOCH).toEpochMilli(),
+            // password は「属性なし」と同じ扱いにする(開いて保存しただけで差分を出さない)
+            itemType = kp.fields[ITEM_TYPE_FIELD]?.content.orEmpty().let { if (it == ItemTypes.PASSWORD) "" else it },
+            environment = kp.fields[ENVIRONMENT_FIELD]?.content.orEmpty(),
+            expiresAt = expiresOf(kp),
         )
+
+        private fun expiresOf(kp: KpEntry): Long? =
+            kp.times?.takeIf { it.expires }?.expiryTime?.toEpochMilli()
+
+        /** 種類と環境の属性。空のときは属性を書かない(applyTo では消す)。 */
+        private fun withExtraFields(fields: EntryFields, e: Entry): EntryFields {
+            var f = fields
+            f = if (e.itemType.isEmpty()) f - ITEM_TYPE_FIELD else f + (ITEM_TYPE_FIELD to EntryValue.Plain(e.itemType))
+            f = if (e.environment.isEmpty()) f - ENVIRONMENT_FIELD else f + (ENVIRONMENT_FIELD to EntryValue.Plain(e.environment))
+            return f
+        }
 
         private fun fieldsFor(e: Entry): List<Pair<String, EntryValue>> = buildList {
             add(BasicField.Title() to EntryValue.Plain(e.title))
@@ -145,10 +164,12 @@ class KdbxVault private constructor(private val db: KeePassDatabase) {
             val at = Instant.ofEpochMilli(e.modifiedAt)
             var fields = KpEntry(UUID.fromString(e.uuid)).fields + fieldsFor(e)
             if (e.androidPackage.isNotEmpty()) fields += ANDROID_APP_FIELD to EntryValue.Plain(e.androidPackage)
+            fields = withExtraFields(fields, e)
+            val times = TimeData.create(at)
             return KpEntry(
                 uuid = UUID.fromString(e.uuid),
                 fields = fields,
-                times = TimeData.create(at),
+                times = e.expiresAt?.let { times.copy(expires = true, expiryTime = Instant.ofEpochMilli(it)) } ?: times,
             )
         }
 
@@ -158,10 +179,14 @@ class KdbxVault private constructor(private val db: KeePassDatabase) {
             var fields = kp.fields + fieldsFor(e)
             fields = if (e.androidPackage.isEmpty()) fields - ANDROID_APP_FIELD
             else fields + (ANDROID_APP_FIELD to EntryValue.Plain(e.androidPackage))
-            return kp.copy(
-                fields = fields,
-                times = (kp.times ?: TimeData.create()).copy(lastModificationTime = Instant.ofEpochMilli(e.modifiedAt)),
-            )
+            fields = withExtraFields(fields, e)
+            var times = (kp.times ?: TimeData.create()).copy(lastModificationTime = Instant.ofEpochMilli(e.modifiedAt))
+            // 期限を変えていないときは、KeePassXC が付けた期限の時刻や印をそのまま残す
+            if (e.expiresAt != expiresOf(kp)) {
+                times = if (e.expiresAt == null) times.copy(expires = false)
+                else times.copy(expires = true, expiryTime = Instant.ofEpochMilli(e.expiresAt))
+            }
+            return kp.copy(fields = fields, times = times)
         }
     }
 }

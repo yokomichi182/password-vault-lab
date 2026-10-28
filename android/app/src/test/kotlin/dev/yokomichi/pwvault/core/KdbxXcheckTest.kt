@@ -1,6 +1,8 @@
 package dev.yokomichi.pwvault.core
 
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
@@ -25,6 +27,7 @@ class KdbxXcheckTest {
                 Entry(uid(1), "title1", "user1", "$CANARY-pw1", "https://site1.example", "", "memo1", 1_700_000_000_000),
                 Entry(uid(2), "title2", "user2", "$CANARY-pw2", "https://site2.example", "com.example.app", "memo2", 1_700_000_000_000),
                 Entry(uid(3), "銀行 \"A\" <b>", "ユーザー", "pä ss\n$CANARY", "https://例.jp/?a=1&b=2", "", "メモ\n二行目", 1_700_000_000_000),
+                Entry(uid(4), "apikey-svc", "key-id-4", "$CANARY-key4", "https://console4.example", "", "memo4", 1_700_000_000_000, ItemTypes.APIKEY, "本番", 1_900_000_000_000),
             ),
             mapOf(uid(9) to 1_700_000_100_000),
         )
@@ -38,7 +41,16 @@ class KdbxXcheckTest {
         assertTrue(f.exists(), "node-made.kdbx が無い。先に check.mjs を実行する")
         val data = KdbxVault.open(f.readBytes(), MASTER).data()
         val byTitle = data.entries.associateBy { it.title }
-        assertEquals(setOf("node-root", "node-sub"), byTitle.keys)
+        assertEquals(setOf("node-root", "node-sub", "node-key"), byTitle.keys)
+        // kdbxweb で作った apikey の項目を、種類・環境・期限・値つきで読める
+        val key = byTitle.getValue("node-key")
+        assertEquals(ItemTypes.APIKEY, key.itemType)
+        assertFalse(key.isLogin)
+        assertEquals("テスト", key.environment)
+        assertEquals(1_900_000_000_000, key.expiresAt)
+        assertEquals("$CANARY-n3", key.password)
+        assertEquals("", byTitle.getValue("node-root").itemType)
+        assertNull(byTitle.getValue("node-root").expiresAt)
         assertEquals("$CANARY-n1", byTitle.getValue("node-root").password)
         assertEquals("$CANARY-n2", byTitle.getValue("node-sub").password)
         assertEquals("nuser17", byTitle.getValue("node-root").username)
@@ -49,6 +61,7 @@ class KdbxXcheckTest {
         val edited = data.copy(entries = data.entries.map { if (it.title == "node-sub") it.copy(notes = "edited", modifiedAt = 1_800_000_000_000) else it })
         val again = KdbxVault.open(v.withData(edited).encode(), MASTER).data()
         assertEquals("edited", again.entries.single { it.title == "node-sub" }.notes)
-        assertEquals(2, again.entries.size)
+        assertEquals(3, again.entries.size)
+        assertEquals(ItemTypes.APIKEY, again.entries.single { it.title == "node-key" }.itemType)
     }
 }

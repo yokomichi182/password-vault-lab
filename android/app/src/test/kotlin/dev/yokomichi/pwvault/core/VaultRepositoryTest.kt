@@ -222,4 +222,38 @@ class VaultRepositoryTest {
         assertThrows(WrongPasswordException::class.java) { a.restoreFrom(foreign, "x") }
         assertEquals(listOf("title1"), a.entries.map { it.title })
     }
+
+    // フェーズ1.5 テスト6(同期を通した形)と11
+    @Test
+    fun apikey_の項目を保存_同期_マージしても_種類が残り_平文が保存先に出ない() {
+        val key = Entry(
+            "00000000-0000-0000-0000-0000000000a1", "svcA", "kidA", "$CANARY-apikey", "https://console.example",
+            modifiedAt = 0, itemType = ItemTypes.APIKEY, environment = "本番", expiresAt = 1_900_000_000_000,
+        )
+        val a = repo("a"); a.create(MASTER); a.upsert(key); a.sync(client("a"))
+        val b = repo("b"); b.importKdbx(worker.blob!!, MASTER); b.sync(client("b"))
+        // Bで種類を password に戻し、Aでは別の項目を足す。Aが古い版のまま未送信の変更を持つ状態でマージする
+        b.upsert(b.entry(key.uuid)!!.copy(itemType = "", environment = "", expiresAt = null)); b.sync(client("b"))
+        a.upsert(item(2))
+        assertEquals(SyncOutcome.Merged, a.sync(client("a")))
+        val merged = a.entry(key.uuid)!!
+        assertEquals("", merged.itemType)
+        assertEquals(setOf("svcA", "title2"), a.entries.map { it.title }.toSet())
+        // 逆向き: Aで apikey に変えてサーバーへ送ると、Bに種類・環境・期限が届く
+        a.upsert(merged.copy(itemType = ItemTypes.APIKEY, environment = "テスト", expiresAt = 1_950_000_000_000)); a.sync(client("a"))
+        b.sync(client("b"))
+        val got = b.entry(key.uuid)!!
+        assertEquals(ItemTypes.APIKEY, got.itemType)
+        assertEquals("テスト", got.environment)
+        assertEquals(1_950_000_000_000, got.expiresAt)
+        // カナリアの探査: サーバーに渡った暗号文、端末内の保管庫と退避ファイル、どちらの端末の作業フォルダにも平文が無い
+        val files = tmp.walkTopDown().filter { it.isFile }.toList()
+        assertTrue(files.isNotEmpty())
+        files.forEach { assertFalse(CANARY in String(it.readBytes(), Charsets.ISO_8859_1), "平文が残っている") }
+        worker.history.values.forEach { assertFalse(CANARY in String(it, Charsets.ISO_8859_1)) }
+        assertFalse(CANARY in String(worker.blob!!, Charsets.ISO_8859_1))
+        // 例外のメッセージにも値が入らない
+        val ex = assertThrows(WrongPasswordException::class.java) { repo("c").importKdbx(worker.blob!!, "wrong-$CANARY") }
+        assertFalse(CANARY in ex.toString())
+    }
 }
