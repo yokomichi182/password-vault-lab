@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Reinsert form</title></head>
+<body>
+  <h1>The form can be removed and put back (window.reinsert)</h1>
+  <div id="slot"></div>
+  <script>
+    function render() {
+      document.getElementById("slot").innerHTML =
+        '<form id="f" onsubmit="return false">' +
+        '<input id="user" type="text" autocomplete="username">' +
+        '<input id="pw" type="password" autocomplete="current-password">' +
+        '<button type="submit">Sign in</button></form>';
+    }
+    window.reinsert = function () {
+      document.getElementById("slot").innerHTML = "";
+      render();
+    };
+    render();
+  </script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Delayed form</title></head>
+<body>
+  <h1>The form appears after a delay (?ms=2000)</h1>
+  <div id="slot"></div>
+  <script>
+    var ms = Number(new URLSearchParams(location.search).get("ms") || "2000");
+    setTimeout(function () {
+      document.getElementById("slot").innerHTML =
+        '<form id="f" onsubmit="return false">' +
+        '<input id="user" type="text" autocomplete="username">' +
+        '<input id="pw" type="password" autocomplete="current-password">' +
+        '<button type="submit">Sign in</button></form>';
+    }, ms);
+  </script>
+</body>
+</html>

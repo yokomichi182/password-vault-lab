@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Hidden fields</title></head>
+<body>
+  <h1>Hidden fields (?v=variant)</h1>
+  <div id="slot"></div>
+  <script>
+    var v = new URLSearchParams(location.search).get("v") || "display-none";
+    var field = '<input id="user" type="text" autocomplete="username"><input id="pw" type="password" autocomplete="current-password">';
+    var variants = {
+      "display-none": '<form id="f" style="display:none">' + field + '</form>',
+      "visibility-hidden": '<form id="f" style="visibility:hidden">' + field + '</form>',
+      "zero-size": '<form id="f"><input id="user" type="text" style="width:0;height:0;padding:0;border:0"><input id="pw" type="password" style="width:0;height:0;padding:0;border:0"></form>',
+      "offscreen": '<form id="f" style="position:absolute;left:-9999px;top:-9999px">' + field + '</form>',
+      "hidden-ancestor": '<div style="display:none"><form id="f">' + field + '</form></div>',
+      "hidden-attribute": '<div hidden><form id="f">' + field + '</form></div>',
+      "clipped-ancestor": '<div style="height:0;overflow:hidden"><form id="f">' + field + '</form></div>',
+      "opacity-zero": '<form id="f" style="opacity:0">' + field + '</form>',
+      "readonly": '<form id="f"><input id="user" type="text" readonly><input id="pw" type="password" readonly></form>',
+      "disabled": '<form id="f"><input id="user" type="text" disabled><input id="pw" type="password" disabled></form>'
+    };
+    document.getElementById("slot").innerHTML = variants[v] || "";
+  </script>
+</body>
+</html>

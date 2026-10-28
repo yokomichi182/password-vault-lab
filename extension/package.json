@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "node build.mjs --test && playwright test",
+    "serve:check": "node e2e/serve-check.ts",
     "scan:canary": "node ../worker/scripts/scan-canary.mjs"
   },
   "dependencies": {
