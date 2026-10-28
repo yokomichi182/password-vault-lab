@@ -64,4 +64,20 @@ class KdbxXcheckTest {
         assertEquals(3, again.entries.size)
         assertEquals(ItemTypes.APIKEY, again.entries.single { it.title == "node-key" }.itemType)
     }
+
+    /** keepassxc.sh が KeePassXC でタイトルを変えたファイルを、Android(kotpass)で読み直す。無ければ何もしない。 */
+    @Test
+    fun readKeepassxcEdited() {
+        assumeTrue(dir != null)
+        val f = File(dir, "keepassxc-edited.kdbx")
+        assumeTrue(f.exists())
+        val data = KdbxVault.open(f.readBytes(), MASTER).data()
+        val key = data.entries.single { it.title == "apikey-svc-edited" }
+        assertEquals(ItemTypes.APIKEY, key.itemType)
+        assertEquals("本番", key.environment)
+        assertEquals(1_900_000_000_000, key.expiresAt)
+        assertEquals("$CANARY-key4", key.password)
+        assertEquals(4, data.entries.size)
+        assertEquals("", data.entries.single { it.title == "title1" }.itemType)
+    }
 }
