@@ -255,3 +255,26 @@ class ItemTypeTest {
         assertEquals(ExpiryState.OK, st(now + 31 * day))
     }
 }
+
+class EnvironmentChoiceTest {
+    @Test
+    fun choicesAreFixedRegardlessOfLocale() {
+        val saved = java.util.Locale.getDefault()
+        try {
+            java.util.Locale.setDefault(java.util.Locale.ENGLISH)
+            assertEquals(listOf("本番", "テスト"), ItemTypes.ENVIRONMENT_CHOICES)
+            assertEquals("本番", ItemTypes.ENV_PRODUCTION)
+            // 英語表示でも「本番」で保存され、KDBX を往復しても変わらない
+            val e = Entry(uid(1), "svc", "kid", "$CANARY-k", "", "", "", T0, ItemTypes.APIKEY, ItemTypes.ENV_PRODUCTION, null)
+            val back = roundTrip(VaultData(listOf(e))).entries.single()
+            assertEquals("本番", back.environment)
+        } finally { java.util.Locale.setDefault(saved) }
+    }
+
+    @Test
+    fun freeTextEnvironmentIsKept() {
+        val e = Entry(uid(2), "svc", "kid", "$CANARY-k", "", "", "", T0, ItemTypes.APIKEY, "staging-eu", null)
+        val back = roundTrip(VaultData(listOf(e))).entries.single()
+        assertEquals("staging-eu", back.environment)
+    }
+}

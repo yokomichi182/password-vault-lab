@@ -413,9 +413,12 @@ private fun EditScreen(m: AppModel, uuid: String?) {
         if (isKey) {
             OutlinedTextField(env, { env = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.environment)) }, singleLine = true)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(R.string.env_production, R.string.env_test).forEach { id ->
-                    val v = stringResource(id)
-                    FilterChip(env == v, { env = v }, label = { Text(v) })
+                // ラベルは表示言語、保存する値は固定の文字列(ItemTypes)
+                listOf(
+                    ItemTypes.ENV_PRODUCTION to R.string.env_production,
+                    ItemTypes.ENV_TEST to R.string.env_test,
+                ).forEach { (v, id) ->
+                    FilterChip(env == v, { env = v }, label = { Text(stringResource(id)) })
                 }
             }
             OutlinedTextField(

@@ -31,6 +31,11 @@ data class Entry(
 object ItemTypes {
     const val PASSWORD = "password"
     const val APIKEY = "apikey"
+
+    /** 環境の候補。Environment 属性にはこの文字列を保存する(表示言語に依存させない。設計書 §2-1)。 */
+    const val ENV_PRODUCTION = "本番"
+    const val ENV_TEST = "テスト"
+    val ENVIRONMENT_CHOICES: List<String> = listOf(ENV_PRODUCTION, ENV_TEST)
 }
 
 /** 保管庫の中身。deleted は KDBX の DeletedObjects に当たる（uuid → 削除時刻）。 */
