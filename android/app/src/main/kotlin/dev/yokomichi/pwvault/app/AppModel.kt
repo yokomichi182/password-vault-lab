@@ -156,7 +156,7 @@ class AppModel(ctx: Context) {
         op { upsert(e) }
         refresh()
         // 設計書 §14-3: パスワードが新しくなったときは、保存の直後に1回だけ調べる
-        if (changed && e.password.isNotEmpty()) checkOneInBackground(e)
+        if (changed && e.password.isNotEmpty()) checkOneInBackground(e.uuid, BreachChecker.sha1Hex(e.password))
         else if (!changed) auditLog.touch(e.uuid, System.currentTimeMillis())
         auditStamp++
         screen = Screen.Detail(e.uuid)
@@ -220,7 +220,7 @@ class AppModel(ctx: Context) {
         message = null
         try {
             val target = entries
-            val items = withContext(Dispatchers.IO) { BreachChecker(http = auditHttp()).audit(target) }
+            val items = withContext(Dispatchers.IO) { BreachChecker(baseUrl = breachBaseUrl(app), http = auditHttp()).audit(target) }
             val at = System.currentTimeMillis()
             items.forEach { auditLog.record(it.uuid, it.result, at) }
             auditReport = AuditReport(
@@ -237,11 +237,13 @@ class AppModel(ctx: Context) {
         }
     }
 
-    private fun checkOneInBackground(e: Entry) {
+    // 保存の時点で SHA-1 を計算し、バックグラウンドにはハッシュだけを渡す（通信の間、パスワードをメモリに残さない）
+    private fun checkOneInBackground(uuid: String, hash: String) {
         background.launch {
-            val result = runCatching { BreachChecker(http = auditHttp()).check(e.password) }.getOrDefault(BreachResult.Skipped)
-            auditLog.record(e.uuid, result, System.currentTimeMillis())
-            auditStamp++
+            val result = runCatching { BreachChecker(baseUrl = breachBaseUrl(app), http = auditHttp()).checkHash(hash) }
+                .getOrDefault(BreachResult.Skipped)
+            auditLog.record(uuid, result, System.currentTimeMillis())
+            withContext(Dispatchers.Main) { auditStamp++ }
         }
     }
 
