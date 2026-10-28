@@ -37,6 +37,9 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("app.keemobile:kotpass:0.13.0")
     implementation("androidx.biometric:biometric:1.1.0")
+    // biometric 1.1.0 が連れてくる fragment 1.2.5 は requestCode を 16 ビットに制限し、
+    // activity-compose の ActivityResult(書き出し・取り込み)で落ちるため、新しい版に上げる
+    implementation("androidx.fragment:fragment-ktx:1.8.9")
 
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("org.json:json:20240303")
