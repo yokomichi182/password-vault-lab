@@ -149,4 +149,20 @@
     <string name="notif_channel">漏洩チェック</string>
     <string name="notif_title">漏洩済みの項目が %1$d 件あります</string>
     <string name="notif_more">ほか %1$d 件</string>
+    <string name="autofill_title">自動入力</string>
+    <string name="autofill_enabled">Tobari が自動入力サービスに設定されています。</string>
+    <string name="autofill_disabled">Tobari は自動入力サービスに設定されていません。</string>
+    <string name="autofill_open_settings">自動入力の設定を開く</string>
+    <string name="autofill_settings_unavailable">システムの設定を開けませんでした。</string>
+    <string name="autofill_chrome_note">Chrome では、Chrome の設定の「別のサービスを使用して自動入力」もオンにしてください。</string>
+    <string name="autofill_unlock_and_fill">ロックを解除して入力</string>
+    <string name="autofill_unlock_title">Tobari のロックを解除</string>
+    <string name="autofill_no_match">該当するログイン情報がありません</string>
+    <string name="autofill_save_title">このログイン情報を保存しますか?</string>
+    <string name="autofill_update_title">このログイン情報を更新しますか?</string>
+    <string name="autofill_update">更新</string>
+    <string name="autofill_site">ウェブサイト</string>
+    <string name="autofill_app">アプリ</string>
+    <string name="autofill_expired">この保存の依頼は期限切れです。</string>
+    <string name="autofill_saved">Tobari に保存しました</string>
 </resources>

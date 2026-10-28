@@ -150,4 +150,20 @@
     <string name="notif_channel">Breach check</string>
     <string name="notif_title">%1$d breached items found</string>
     <string name="notif_more">and %1$d more</string>
+    <string name="autofill_title">Autofill</string>
+    <string name="autofill_enabled">Tobari is set as the autofill service.</string>
+    <string name="autofill_disabled">Tobari is not set as the autofill service.</string>
+    <string name="autofill_open_settings">Open autofill settings</string>
+    <string name="autofill_settings_unavailable">Could not open the system settings.</string>
+    <string name="autofill_chrome_note">In Chrome, also turn on \"Autofill using another service\" in Chrome\'s settings.</string>
+    <string name="autofill_unlock_and_fill">Unlock to autofill</string>
+    <string name="autofill_unlock_title">Unlock Tobari</string>
+    <string name="autofill_no_match">No matching login</string>
+    <string name="autofill_save_title">Save this login?</string>
+    <string name="autofill_update_title">Update this login?</string>
+    <string name="autofill_update">Update</string>
+    <string name="autofill_site">Website</string>
+    <string name="autofill_app">App</string>
+    <string name="autofill_expired">This save request has expired.</string>
+    <string name="autofill_saved">Saved to Tobari</string>
 </resources>

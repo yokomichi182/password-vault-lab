@@ -7,6 +7,7 @@ import androidx.compose.runtime.setValue
 import dev.yokomichi.pwvault.R
 import dev.yokomichi.pwvault.core.AuditCoordinator
 import dev.yokomichi.pwvault.core.AuditReport
+import dev.yokomichi.pwvault.core.AutoLock
 import dev.yokomichi.pwvault.core.BreachChecker
 import dev.yokomichi.pwvault.core.CsvFormatException
 import dev.yokomichi.pwvault.core.CsvImport
@@ -277,9 +278,23 @@ class AppModel(ctx: Context) {
     }
 
     fun onForeground() {
-        val limit = settings.autoLockMinutes * 60_000L
-        if (repo.isUnlocked && backgroundedAt > 0 && System.currentTimeMillis() - backgroundedAt >= limit) lock()
+        enforceAutoLock()
         backgroundedAt = 0
+    }
+
+    /**
+     * バックグラウンドに回ってから設定の時間を過ぎていればロックする。アプリの画面と自動入力の両方から呼ぶ。
+     * メインスレッドで呼ぶこと(画面の状態を書き換えるため)。
+     */
+    fun enforceAutoLock(now: Long = System.currentTimeMillis()) {
+        if (AutoLock.due(repo.isUnlocked, backgroundedAt, now, settings.autoLockMinutes * 60_000L)) lock()
+    }
+
+    val isUnlocked: Boolean get() = repo.isUnlocked
+
+    /** 自動入力用の読み取り。アプリの画面と同じ1本のスレッドを通す。ロック中は null。 */
+    suspend fun autofillEntries(): List<Entry>? = withContext(io) {
+        if (repo.isUnlocked) runCatching { repo.entries }.getOrNull() else null
     }
 
     fun newEntry() = Entry(UUID.randomUUID().toString(), "", "", "", "", modifiedAt = 0)

@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.Switch
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -113,7 +114,7 @@ fun App(m: AppModel) {
 }
 
 @Composable
-private fun PasswordField(value: String, onChange: (String) -> Unit, label: String, modifier: Modifier = Modifier) {
+internal fun PasswordField(value: String, onChange: (String) -> Unit, label: String, modifier: Modifier = Modifier) {
     var show by remember { mutableStateOf(false) }
     OutlinedTextField(
         value, onChange, modifier.fillMaxWidth(), label = { Text(label) }, singleLine = true,
@@ -514,6 +515,16 @@ private fun SettingsScreen(m: AppModel) {
     var autoAuditOn by remember { mutableStateOf(s.autoAudit) }
     // 通知の許可を求める。許可されなくても、自動チェックの設定はオンのままにする(結果は一覧の上に出る)
     val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    // 設計書 §5-4: 自動入力サービスの状態。システムの設定から戻ったときに読み直す
+    var autofillOn by remember { mutableStateOf(autofillEnabled(ctx)) }
+    DisposableEffect(Unit) {
+        val owner = ctx.findActivity()
+        val obs = androidx.lifecycle.LifecycleEventObserver { _, ev ->
+            if (ev == androidx.lifecycle.Lifecycle.Event.ON_RESUME) autofillOn = autofillEnabled(ctx)
+        }
+        owner?.lifecycle?.addObserver(obs)
+        onDispose { owner?.lifecycle?.removeObserver(obs) }
+    }
     var history by remember { mutableStateOf<List<HistoryItem>?>(null) }
     var restoreTarget by remember { mutableStateOf<HistoryItem?>(null) }
     fun setBiometric(on: Boolean) {
@@ -599,6 +610,22 @@ private fun SettingsScreen(m: AppModel) {
         }
         Text(stringResource(R.string.auto_audit_note), style = MaterialTheme.typography.bodySmall)
         HorizontalDivider()
+        Text(stringResource(R.string.autofill_title), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(if (autofillOn) R.string.autofill_enabled else R.string.autofill_disabled))
+        if (!autofillOn) {
+            OutlinedButton({
+                runCatching {
+                    ctx.startActivity(
+                        android.content.Intent(
+                            android.provider.Settings.ACTION_REQUEST_SET_AUTOFILL_SERVICE,
+                            Uri.parse("package:" + ctx.packageName),
+                        ),
+                    )
+                }.onFailure { info = ctx.getString(R.string.autofill_settings_unavailable) }
+            }) { Text(stringResource(R.string.autofill_open_settings)) }
+        }
+        Text(stringResource(R.string.autofill_chrome_note), style = MaterialTheme.typography.bodySmall)
+        HorizontalDivider()
         Text(stringResource(R.string.data), style = MaterialTheme.typography.titleMedium)
         OutlinedButton(
             { apply(); scope.launch { history = m.history() } },
@@ -669,3 +696,7 @@ private fun SettingsScreen(m: AppModel) {
         )
     }
 }
+
+/** 設計書 §5-4: Tobari が自動入力サービスとして選ばれているか。 */
+private fun autofillEnabled(ctx: Context): Boolean =
+    ctx.getSystemService(android.view.autofill.AutofillManager::class.java)?.hasEnabledAutofillServices() == true
