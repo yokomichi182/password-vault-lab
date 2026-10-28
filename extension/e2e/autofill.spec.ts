@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { CANARY, PORT_A, PORT_B, MASTER, appOrigin, appUrl, expect, test, type Env } from "./fixtures.ts";
 import type { FakeItem } from "./support.ts";
-import { sha1Upper } from "./support.ts";
+import { TOKEN_MAIN, WRANGLER_PORT, sha1Upper } from "./support.ts";
 
 // 設計書 §13-3 と実装指示 4-2 の 1〜16。入力したかどうかは欄の値で確かめ、値そのものは出力しない。
 test.describe.configure({ mode: "serial" });
@@ -357,4 +357,26 @@ test("追加. 『パスワードをコピー』で貼り付けられ、30 秒後
   await expect.poll(async () => (await paste()).trim(), { timeout: 90_000, intervals: [3000] }).toBe("");
   await popup.close();
   await target.close();
+});
+
+test("追加. 設定の保存: 保管庫が開けない、またはトークンが違うときは保存しない", async ({ env }) => {
+  await env.setVault([loginApp]);
+  const snapshot = () => env.ext.evaluate(async () => JSON.stringify(await chrome.storage.local.get(null)));
+  const before = await snapshot();
+  const attempt = async (token: string, master: string) => {
+    await env.ext.goto(`chrome-extension://${env.extId}/options.html`);
+    await env.ext.fill("#sync-url", `http://localhost:${WRANGLER_PORT}`);
+    await env.ext.fill("#vault-name", "main");
+    await env.ext.fill("#token", token);
+    await env.ext.fill("#master", master);
+    await env.ext.click("#save-sync");
+  };
+  // マスターパスワードが保管庫と合わない
+  await attempt(TOKEN_MAIN, `${MASTER}-wrong`);
+  await expect(env.ext.locator("#sync-msg")).toHaveText(/Cannot open the vault/, { timeout: 60_000 });
+  expect((await snapshot()) === before).toBe(true);
+  // トークンが違う
+  await attempt(`${TOKEN_MAIN}-wrong`, MASTER);
+  await expect(env.ext.locator("#sync-msg")).toHaveText(/did not accept the token/, { timeout: 60_000 });
+  expect((await snapshot()) === before).toBe(true);
 });
