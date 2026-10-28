@@ -4,9 +4,11 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import dev.yokomichi.pwvault.R
 import dev.yokomichi.pwvault.core.AuditItem
 import dev.yokomichi.pwvault.core.BreachChecker
 import dev.yokomichi.pwvault.core.BreachResult
+import dev.yokomichi.pwvault.core.CsvFormatException
 import dev.yokomichi.pwvault.core.CsvImport
 import dev.yokomichi.pwvault.core.HistoryItem
 import dev.yokomichi.pwvault.core.Entry
@@ -44,10 +46,13 @@ data class AuditReport(val at: Long, val breached: List<AuditItem>, val cleanCou
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppModel(ctx: Context) {
     private val repo = VaultRepository(LocalStore(File(ctx.filesDir, "vault")))
+    private val app = ctx.applicationContext
     val settings = AppSettings(ctx)
     val biometric = BiometricVault(ctx)
     val auditLog = AuditLog(ctx)
     private val background = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // 画面の切り替えで取り消されないように、操作の直後の同期はアプリの寿命のスコープで走らせる
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val io: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(1)
 
     var screen by mutableStateOf<Screen>(if (repo.hasVault) Screen.Unlock else Screen.Setup)
@@ -61,6 +66,9 @@ class AppModel(ctx: Context) {
     // 詳細画面の「最終チェック」を、結果が変わったときに描き直すための印
     var auditStamp by mutableStateOf(0)
     private var backgroundedAt = 0L
+
+    // 画面の言語は端末の設定に従う。文言はリソースから引く
+    private fun t(id: Int, vararg args: Any): String = app.getString(id, *args)
 
     private suspend fun <T> op(block: VaultRepository.() -> T): T {
         busy = true
@@ -81,13 +89,13 @@ class AppModel(ctx: Context) {
         try {
             block()
         } catch (e: WrongPasswordException) {
-            message = e.message
+            message = t(R.string.wrong_password)
         } catch (e: Exception) {
             message = failure
         }
     }
 
-    suspend fun create(master: String, csvText: String?) = guarded("作成に失敗しました") {
+    suspend fun create(master: String, csvText: String?) = guarded(t(R.string.err_create)) {
         op {
             create(master)
             if (csvText != null) addAll(CsvImport.import(csvText, emptyList(), System.currentTimeMillis()).entries)
@@ -96,17 +104,17 @@ class AppModel(ctx: Context) {
         screen = Screen.List
     }
 
-    suspend fun importKdbx(bytes: ByteArray, master: String) = guarded("取り込みに失敗しました") {
+    suspend fun importKdbx(bytes: ByteArray, master: String) = guarded(t(R.string.err_import)) {
         op { importKdbx(bytes, master) }
         refresh()
         screen = Screen.List
     }
 
-    suspend fun unlock(master: String) = guarded("ロック解除に失敗しました") {
+    suspend fun unlock(master: String) = guarded(t(R.string.err_unlock)) {
         op { unlock(master) }
         refresh()
         screen = Screen.List
-        if (settings.syncConfigured) sync()
+        if (settings.syncConfigured) appScope.launch { sync() }
     }
 
     /** 生体認証の登録。保管庫が開いているときだけ、マスターパスワードを取り出して渡す。 */
@@ -115,7 +123,7 @@ class AppModel(ctx: Context) {
     suspend fun history(): List<HistoryItem>? = try {
         withContext(io) { SyncClient(settings.syncUrl, settings.syncToken, "main", settings.deviceName).history() }
     } catch (e: Exception) {
-        message = "履歴を取得できませんでした"
+        message = t(R.string.err_history)
         null
     }
 
@@ -127,13 +135,13 @@ class AppModel(ctx: Context) {
             }
             op { restoreFrom(bytes, item.version.toString()) }
         } catch (e: WrongPasswordException) {
-            return "この版は、いまのマスターパスワードで開けませんでした"
+            return t(R.string.err_restore_wrong_pw)
         } catch (e: Exception) {
-            return "復元できませんでした"
+            return t(R.string.err_restore)
         }
         refresh()
         sync()
-        return "版 ${item.version} の内容に戻しました(戻す前の版は端末内に退避しています)"
+        return t(R.string.restored, item.version)
     }
 
     fun lock() {
@@ -143,59 +151,64 @@ class AppModel(ctx: Context) {
         repo.lock()
     }
 
-    suspend fun save(e: Entry) = guarded("保存に失敗しました") {
+    suspend fun save(e: Entry) = guarded(t(R.string.err_save)) {
         val changed = repo.entry(e.uuid)?.password != e.password
         op { upsert(e) }
         refresh()
         // 設計書 §14-3: パスワードが新しくなったときは、保存の直後に1回だけ調べる
         if (changed && e.password.isNotEmpty()) checkOneInBackground(e)
+        else if (!changed) auditLog.touch(e.uuid, System.currentTimeMillis())
+        auditStamp++
         screen = Screen.Detail(e.uuid)
-        if (settings.syncConfigured) sync()
+        if (settings.syncConfigured) appScope.launch { sync() }
     }
 
-    suspend fun delete(uuid: String) = guarded("削除に失敗しました") {
+    suspend fun delete(uuid: String) = guarded(t(R.string.err_delete)) {
         op { delete(uuid) }
         auditLog.forget(uuid)
         refresh()
         screen = Screen.List
-        if (settings.syncConfigured) sync()
+        if (settings.syncConfigured) appScope.launch { sync() }
     }
 
     suspend fun importCsv(text: String): String = try {
         val r = CsvImport.import(text, entries, System.currentTimeMillis())
         op { addAll(r.entries) }
         refresh()
-        "${r.entries.size} 件を取り込みました(重複 ${r.duplicates.size} 件は除きました)"
-    } catch (e: IllegalArgumentException) {
-        e.message ?: "取り込めませんでした"
+        t(R.string.csv_imported, r.entries.size, r.duplicates.size)
+    } catch (e: CsvFormatException) {
+        t(if (e.reason == CsvFormatException.Reason.EMPTY) R.string.csv_empty else R.string.csv_unsupported)
     } catch (e: Exception) {
-        "取り込めませんでした"
+        t(R.string.csv_failed)
     }
 
     suspend fun export(): ByteArray? = try {
         op { exportKdbx() }
     } catch (e: Exception) {
-        message = "書き出しに失敗しました"
+        message = t(R.string.err_export)
         null
     }
 
     suspend fun sync() {
         if (!settings.syncConfigured) {
-            message = "同期の設定がありません"
+            message = t(R.string.no_sync_config)
             return
         }
         try {
             val client = SyncClient(settings.syncUrl, settings.syncToken, "main", settings.deviceName)
             lastSync = when (op { sync(client) }) {
-                SyncOutcome.UpToDate -> "変更なし"
-                SyncOutcome.Pushed -> "送信しました"
-                SyncOutcome.Merged -> "サーバーの変更を取り込みました"
+                SyncOutcome.UpToDate -> t(R.string.sync_nochange)
+                SyncOutcome.Pushed -> t(R.string.sync_pushed)
+                SyncOutcome.Merged -> t(R.string.sync_merged)
             }
         } catch (e: WrongPasswordException) {
-            lastSync = "サーバーの保管庫を開けません(マスターパスワードが違います)"
+            lastSync = t(R.string.sync_wrong_pw)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            // 通信の失敗では手元の変更は残る。例外の本文は出さない
-            lastSync = "同期できませんでした。手元には保存されています"
+            // 通信の失敗では手元の変更は残る。例外の本文は出さず、種類だけ残す
+            android.util.Log.w("pwvault", "sync failed: ${e.javaClass.simpleName}")
+            lastSync = t(R.string.sync_failed)
         }
         refresh()
     }
@@ -218,7 +231,7 @@ class AppModel(ctx: Context) {
             )
             auditStamp++
         } catch (e: Exception) {
-            message = "漏洩チェックに失敗しました"
+            message = t(R.string.err_audit)
         } finally {
             auditing = false
         }

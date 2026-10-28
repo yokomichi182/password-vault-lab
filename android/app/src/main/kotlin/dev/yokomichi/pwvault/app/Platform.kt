@@ -75,12 +75,20 @@ class AppSettings(ctx: Context) {
 class AuditLog(ctx: Context) {
     private val prefs = ctx.getSharedPreferences("audit", Context.MODE_PRIVATE)
 
-    data class Last(val checkedAt: Long, val count: Int)
+    /** validAt: パスワードが変わっていないと分かっている最後の時刻。項目の更新がこれより新しければ古い結果。 */
+    data class Last(val checkedAt: Long, val count: Int, val validAt: Long)
 
     fun last(uuid: String): Last? = prefs.getString(uuid, null)?.split(',')?.let {
         val at = it.getOrNull(0)?.toLongOrNull()
         val n = it.getOrNull(1)?.toIntOrNull()
-        if (at != null && n != null) Last(at, n) else null
+        val valid = it.getOrNull(2)?.toLongOrNull() ?: at
+        if (at != null && n != null && valid != null) Last(at, n, valid) else null
+    }
+
+    /** パスワード以外だけを編集したとき。結果はそのまま有効。 */
+    fun touch(uuid: String, at: Long) {
+        val l = last(uuid) ?: return
+        prefs.edit().putString(uuid, "${l.checkedAt},${l.count},$at").apply()
     }
 
     /** 調べられなかった(Skipped)項目は記録しない。前回の結果を消さないため。 */
@@ -90,7 +98,7 @@ class AuditLog(ctx: Context) {
             is BreachResult.Breached -> result.count
             BreachResult.Skipped -> return
         }
-        prefs.edit().putString(uuid, "$at,$n").apply()
+        prefs.edit().putString(uuid, "$at,$n,$at").apply()
     }
 
     fun forget(uuid: String) = prefs.edit().remove(uuid).apply()

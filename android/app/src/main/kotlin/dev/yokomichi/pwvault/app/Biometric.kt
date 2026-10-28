@@ -1,5 +1,6 @@
 package dev.yokomichi.pwvault.app
 
+import dev.yokomichi.pwvault.R
 import android.content.Context
 import android.content.ContextWrapper
 import android.os.Build
@@ -122,20 +123,20 @@ fun authenticate(
         object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 val c = result.cryptoObject?.cipher
-                if (c != null) onSuccess(c) else onFailure("生体認証を確認できませんでした")
+                if (c != null) onSuccess(c) else onFailure(activity.getString(R.string.bio_unverified))
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                 // ユーザーが取り消したときは何も出さない
                 if (errorCode == BiometricPrompt.ERROR_USER_CANCELED || errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
                     errorCode == BiometricPrompt.ERROR_CANCELED
-                ) onFailure("") else onFailure("生体認証に失敗しました")
+                ) onFailure("") else onFailure(activity.getString(R.string.bio_failed))
             }
         },
     )
     val info = BiometricPrompt.PromptInfo.Builder()
         .setTitle(title)
-        .setNegativeButtonText("キャンセル")
+        .setNegativeButtonText(activity.getString(R.string.bio_cancel))
         .setAllowedAuthenticators(BIOMETRIC_STRONG)
         .build()
     prompt.authenticate(info, BiometricPrompt.CryptoObject(cipher))

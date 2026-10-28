@@ -54,13 +54,13 @@ object CsvImport {
         newUuid: () -> String = { UUID.randomUUID().toString() },
     ): Result {
         val rows = parseCsv(text)
-        require(rows.isNotEmpty()) { "CSV が空です" }
+        if (rows.isEmpty()) throw CsvFormatException(CsvFormatException.Reason.EMPTY)
         val header = rows[0].map { it.trim().lowercase() }
         val col = header.withIndex().associate { it.value to it.index }
         val keys = when {
             "login_uri" in col -> listOf("name", "login_uri", "login_username", "login_password", "notes")
             "url" in col && "password" in col -> listOf("name", "url", "username", "password", "note")
-            else -> throw IllegalArgumentException("対応していない CSV の形式です")
+            else -> throw CsvFormatException(CsvFormatException.Reason.UNSUPPORTED)
         }
         fun get(r: List<String>, k: String): String = col[k]?.let { r.getOrNull(it) } ?: ""
         val seen = existing.map { it.url to it.username }.toMutableSet()
@@ -80,4 +80,9 @@ object CsvImport {
         }
         return Result(fresh, dups)
     }
+}
+
+/** 取り込めない CSV。画面に出す文言は呼び出し側が言語に合わせて選ぶ。 */
+class CsvFormatException(val reason: Reason) : IllegalArgumentException(reason.name) {
+    enum class Reason { EMPTY, UNSUPPORTED }
 }

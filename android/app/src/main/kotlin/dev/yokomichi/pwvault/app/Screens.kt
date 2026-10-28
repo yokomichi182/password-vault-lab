@@ -39,6 +39,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import dev.yokomichi.pwvault.R
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -62,10 +64,10 @@ fun App(m: AppModel) {
             m.message?.let {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text(it, Modifier.weight(1f), color = MaterialTheme.colorScheme.error)
-                    TextButton({ m.message = null }) { Text("閉じる") }
+                    TextButton({ m.message = null }) { Text(stringResource(R.string.close)) }
                 }
             }
-            if (m.busy) Text("処理中…", color = MaterialTheme.colorScheme.primary)
+            if (m.busy) Text(stringResource(R.string.processing), color = MaterialTheme.colorScheme.primary)
             when (val s = m.screen) {
                 Screen.Setup -> SetupScreen(m)
                 Screen.Unlock -> UnlockScreen(m)
@@ -85,7 +87,7 @@ private fun PasswordField(value: String, onChange: (String) -> Unit, label: Stri
         value, onChange, modifier.fillMaxWidth(), label = { Text(label) }, singleLine = true,
         visualTransformation = if (show) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-        trailingIcon = { TextButton({ show = !show }) { Text(if (show) "隠す" else "表示") } },
+        trailingIcon = { TextButton({ show = !show }) { Text(if (show) stringResource(R.string.hide) else stringResource(R.string.show)) } },
     )
 }
 
@@ -105,16 +107,16 @@ private fun SetupScreen(m: AppModel) {
         if (u != null) kdbx = runCatching { readBytes(ctx, u) }.getOrNull()
     }
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("初期設定", style = MaterialTheme.typography.headlineSmall)
-        Text("マスターパスワードは復元できません。忘れると保管庫を開けなくなります。")
-        PasswordField(master, { master = it }, "マスターパスワード")
-        if (kdbx == null) PasswordField(confirm, { confirm = it }, "マスターパスワード(確認)")
+        Text(stringResource(R.string.setup_title), style = MaterialTheme.typography.headlineSmall)
+        Text(stringResource(R.string.setup_warning))
+        PasswordField(master, { master = it }, stringResource(R.string.master_password))
+        if (kdbx == null) PasswordField(confirm, { confirm = it }, stringResource(R.string.master_password_confirm))
         Text(
-            if (kdbx != null) "取り込む .kdbx を選択済み" else if (csv != null) "取り込む CSV を選択済み" else "取り込むデータ: なし",
+            if (kdbx != null) stringResource(R.string.setup_kdbx_selected) else if (csv != null) stringResource(R.string.setup_csv_selected) else stringResource(R.string.setup_nothing),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton({ pickKdbx.launch(arrayOf("*/*")) }) { Text(".kdbx を選ぶ") }
-            OutlinedButton({ pickCsv.launch(arrayOf("text/*", "*/*")) }) { Text("CSV を選ぶ") }
+            OutlinedButton({ pickKdbx.launch(arrayOf("*/*")) }) { Text(stringResource(R.string.pick_kdbx)) }
+            OutlinedButton({ pickCsv.launch(arrayOf("text/*", "*/*")) }) { Text(stringResource(R.string.pick_csv)) }
         }
         val ok = master.length >= 8 && (kdbx != null || master == confirm) && !m.busy
         Button(
@@ -125,9 +127,9 @@ private fun SetupScreen(m: AppModel) {
                 }
             },
             enabled = ok,
-        ) { Text(if (kdbx != null) "取り込む" else "作成する") }
-        if (master.isNotEmpty() && master.length < 8) Text("8 文字以上にしてください")
-        if (kdbx == null && confirm.isNotEmpty() && master != confirm) Text("確認用が一致しません")
+        ) { Text(if (kdbx != null) stringResource(R.string.import_action) else stringResource(R.string.create_action)) }
+        if (master.isNotEmpty() && master.length < 8) Text(stringResource(R.string.min_length))
+        if (kdbx == null && confirm.isNotEmpty() && master != confirm) Text(stringResource(R.string.confirm_mismatch))
     }
 }
 
@@ -142,22 +144,22 @@ private fun UnlockScreen(m: AppModel) {
         val activity = ctx.findActivity() ?: return
         val cipher = m.biometric.decryptCipher()
         if (cipher == null) {
-            m.message = "生体認証の登録が無効になりました。マスターパスワードで開いて、設定で登録し直してください"
+            m.message = ctx.getString(R.string.bio_invalidated)
             return
         }
         authenticate(
-            activity, cipher, "保管庫を開く",
+            activity, cipher, ctx.getString(R.string.open_vault),
             onSuccess = { c ->
                 val pw = m.biometric.open(c)
-                if (pw == null) m.message = "生体認証で開けませんでした" else scope.launch { m.unlock(pw) }
+                if (pw == null) m.message = ctx.getString(R.string.bio_open_failed) else scope.launch { m.unlock(pw) }
             },
             onFailure = { if (it.isNotEmpty()) m.message = it },
         )
     }
     LaunchedEffect(Unit) { if (bio) unlockWithBiometric() }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("ロック解除", style = MaterialTheme.typography.headlineSmall)
-        PasswordField(master, { master = it }, "マスターパスワード")
+        Text(stringResource(R.string.unlock_title), style = MaterialTheme.typography.headlineSmall)
+        PasswordField(master, { master = it }, stringResource(R.string.master_password))
         Button(
             onClick = {
                 scope.launch {
@@ -166,8 +168,8 @@ private fun UnlockScreen(m: AppModel) {
                 }
             },
             enabled = master.isNotEmpty() && !m.busy,
-        ) { Text("開く") }
-        if (bio) OutlinedButton({ unlockWithBiometric() }, enabled = !m.busy) { Text("生体認証で開く") }
+        ) { Text(stringResource(R.string.open_action)) }
+        if (bio) OutlinedButton({ unlockWithBiometric() }, enabled = !m.busy) { Text(stringResource(R.string.open_with_bio)) }
     }
 }
 
@@ -183,26 +185,26 @@ private fun ListScreen(m: AppModel) {
     }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Text("保管庫 (${m.entries.size})", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-            TextButton({ m.screen = Screen.Settings }) { Text("設定") }
-            TextButton({ m.lock() }) { Text("ロック") }
+            Text(stringResource(R.string.vault_count, m.entries.size), Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+            TextButton({ m.screen = Screen.Settings }) { Text(stringResource(R.string.settings)) }
+            TextButton({ m.lock() }) { Text(stringResource(R.string.lock)) }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(q, { q = it }, Modifier.weight(1f), label = { Text("検索") }, singleLine = true)
-            Button({ m.screen = Screen.Edit(null) }) { Text("追加") }
+            OutlinedTextField(q, { q = it }, Modifier.weight(1f), label = { Text(stringResource(R.string.search)) }, singleLine = true)
+            Button({ m.screen = Screen.Edit(null) }) { Text(stringResource(R.string.add)) }
         }
         Text(
             when {
-                m.pendingSync -> "未同期の変更があります"
+                m.pendingSync -> stringResource(R.string.pending_sync)
                 else -> m.lastSync ?: ""
             },
             style = MaterialTheme.typography.bodySmall,
         )
-        if (shown.isEmpty()) Text("該当する項目がありません", Modifier.padding(top = 24.dp))
+        if (shown.isEmpty()) Text(stringResource(R.string.no_items), Modifier.padding(top = 24.dp))
         LazyColumn(Modifier.fillMaxSize()) {
             items(shown, key = { it.uuid }) { e ->
                 Column(Modifier.fillMaxWidth().clickable { m.screen = Screen.Detail(e.uuid) }.padding(vertical = 10.dp)) {
-                    Text(e.title.ifEmpty { "(無題)" }, style = MaterialTheme.typography.titleMedium)
+                    Text(e.title.ifEmpty { stringResource(R.string.untitled) }, style = MaterialTheme.typography.titleMedium)
                     Text(listOf(e.username, e.url).filter { it.isNotEmpty() }.joinToString("  "), style = MaterialTheme.typography.bodySmall)
                 }
                 HorizontalDivider()
@@ -232,27 +234,27 @@ private fun DetailScreen(m: AppModel, uuid: String) {
     var confirmDelete by remember { mutableStateOf(false) }
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton({ m.screen = Screen.List }) { Text("戻る") }
-            Text(e.title.ifEmpty { "(無題)" }, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-            TextButton({ m.screen = Screen.Edit(e.uuid) }) { Text("編集") }
+            TextButton({ m.screen = Screen.List }) { Text(stringResource(R.string.back)) }
+            Text(e.title.ifEmpty { stringResource(R.string.untitled) }, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+            TextButton({ m.screen = Screen.Edit(e.uuid) }) { Text(stringResource(R.string.edit)) }
         }
-        Field("ユーザー名", e.username) { Clip.copySensitive(ctx, "ユーザー名", e.username) }
-        Field("パスワード", if (reveal) e.password else "••••••••••") { Clip.copySensitive(ctx, "パスワード", e.password) }
-        TextButton({ reveal = !reveal }) { Text(if (reveal) "パスワードを隠す" else "パスワードを表示") }
+        Field(stringResource(R.string.username), e.username) { Clip.copySensitive(ctx, ctx.getString(R.string.username), e.username) }
+        Field(stringResource(R.string.password), if (reveal) e.password else "••••••••••") { Clip.copySensitive(ctx, ctx.getString(R.string.password), e.password) }
+        TextButton({ reveal = !reveal }) { Text(if (reveal) stringResource(R.string.hide_password) else stringResource(R.string.show_password)) }
         Field("URL", e.url) { Clip.copySensitive(ctx, "URL", e.url) }
-        if (e.androidPackage.isNotEmpty()) Field("Android アプリ", e.androidPackage) { }
-        if (e.notes.isNotEmpty()) Field("メモ", e.notes) { }
-        Text("コピーした内容は 30 秒後に消えます", style = MaterialTheme.typography.bodySmall)
+        if (e.androidPackage.isNotEmpty()) Field(stringResource(R.string.android_app), e.androidPackage) { }
+        if (e.notes.isNotEmpty()) Field(stringResource(R.string.notes), e.notes) { }
+        Text(stringResource(R.string.copy_note), style = MaterialTheme.typography.bodySmall)
         AuditLine(m, e)
-        OutlinedButton({ confirmDelete = true }) { Text("削除") }
+        OutlinedButton({ confirmDelete = true }) { Text(stringResource(R.string.delete)) }
     }
     if (confirmDelete) {
         AlertDialog(
             onDismissRequest = { confirmDelete = false },
-            title = { Text("削除しますか") },
-            text = { Text("「${e.title}」を削除します。他の端末にも同期されます。") },
-            confirmButton = { TextButton({ confirmDelete = false; scope.launch { m.delete(e.uuid) } }) { Text("削除する") } },
-            dismissButton = { TextButton({ confirmDelete = false }) { Text("やめる") } },
+            title = { Text(stringResource(R.string.delete_title)) },
+            text = { Text(stringResource(R.string.delete_body, e.title)) },
+            confirmButton = { TextButton({ confirmDelete = false; scope.launch { m.delete(e.uuid) } }) { Text(stringResource(R.string.delete_confirm)) } },
+            dismissButton = { TextButton({ confirmDelete = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }
@@ -263,13 +265,13 @@ private fun AuditLine(m: AppModel, e: Entry) {
     m.auditStamp // 結果が変わったら描き直す
     val last = m.auditLog.last(e.uuid)
     val text = when {
-        last == null -> "漏洩チェック: 未チェック"
+        last == null -> stringResource(R.string.audit_unchecked)
         else -> {
             val at = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.JAPAN).format(java.util.Date(last.checkedAt))
-            val result = if (last.count > 0) "漏洩済み(${last.count} 回出現)" else "漏洩は見つかりませんでした"
+            val result = if (last.count > 0) stringResource(R.string.audit_breached, last.count) else stringResource(R.string.audit_clean)
             // パスワードを変えたあとの結果は、いまのパスワードのものではない
-            val stale = if (e.modifiedAt > last.checkedAt) "(その後に編集されています。再チェックしてください)" else ""
-            "漏洩チェック: $at  $result$stale"
+            val stale = if (e.modifiedAt > last.validAt) stringResource(R.string.audit_stale) else ""
+            stringResource(R.string.audit_line, at, result, stale)
         }
     }
     Text(text, style = MaterialTheme.typography.bodySmall)
@@ -282,7 +284,7 @@ private fun Field(label: String, value: String, onCopy: () -> Unit) {
             Text(label, style = MaterialTheme.typography.labelMedium)
             Text(value.ifEmpty { "-" })
         }
-        if (value.isNotEmpty()) TextButton(onCopy) { Text("コピー") }
+        if (value.isNotEmpty()) TextButton(onCopy) { Text(stringResource(R.string.copy)) }
     }
 }
 
@@ -300,14 +302,14 @@ private fun EditScreen(m: AppModel, uuid: String?) {
     var notes by remember { mutableStateOf(base.notes) }
     var gen by remember { mutableStateOf(false) }
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(if (uuid == null) "項目の追加" else "項目の編集", style = MaterialTheme.typography.titleLarge)
-        OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text("タイトル") }, singleLine = true)
-        OutlinedTextField(user, { user = it }, Modifier.fillMaxWidth(), label = { Text("ユーザー名") }, singleLine = true)
-        PasswordField(pw, { pw = it }, "パスワード")
-        OutlinedButton({ gen = true }) { Text("パスワードを生成") }
+        Text(if (uuid == null) stringResource(R.string.add_item) else stringResource(R.string.edit_item), style = MaterialTheme.typography.titleLarge)
+        OutlinedTextField(title, { title = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.title)) }, singleLine = true)
+        OutlinedTextField(user, { user = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.username)) }, singleLine = true)
+        PasswordField(pw, { pw = it }, stringResource(R.string.password))
+        OutlinedButton({ gen = true }) { Text(stringResource(R.string.generate_password)) }
         OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth(), label = { Text("URL") }, singleLine = true)
-        OutlinedTextField(pkg, { pkg = it }, Modifier.fillMaxWidth(), label = { Text("Android のパッケージ名") }, singleLine = true)
-        OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text("メモ") }, minLines = 3)
+        OutlinedTextField(pkg, { pkg = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.android_package)) }, singleLine = true)
+        OutlinedTextField(notes, { notes = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.notes)) }, minLines = 3)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
                 onClick = {
@@ -316,8 +318,8 @@ private fun EditScreen(m: AppModel, uuid: String?) {
                     }
                 },
                 enabled = title.isNotBlank() && !m.busy,
-            ) { Text("保存") }
-            OutlinedButton({ m.screen = if (uuid != null) Screen.Detail(uuid) else Screen.List }) { Text("やめる") }
+            ) { Text(stringResource(R.string.save)) }
+            OutlinedButton({ m.screen = if (uuid != null) Screen.Detail(uuid) else Screen.List }) { Text(stringResource(R.string.cancel)) }
         }
     }
     if (gen) GeneratorDialog(onUse = { pw = it; gen = false }, onDismiss = { gen = false })
@@ -334,13 +336,13 @@ private fun GeneratorDialog(onUse: (String) -> Unit, onDismiss: () -> Unit) {
     }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("パスワードを生成") },
+        title = { Text(stringResource(R.string.generate_password)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(value, style = MaterialTheme.typography.titleMedium)
                 OutlinedTextField(
                     length.toString(), { v -> v.toIntOrNull()?.let { length = it.coerceIn(4, 128); regen() } },
-                    label = { Text("長さ(4〜128)") }, singleLine = true,
+                    label = { Text(stringResource(R.string.gen_length)) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 )
                 PasswordGenerator.CharSet.entries.forEach { cs ->
@@ -351,19 +353,19 @@ private fun GeneratorDialog(onUse: (String) -> Unit, onDismiss: () -> Unit) {
                         })
                         Text(
                             when (cs) {
-                                PasswordGenerator.CharSet.LOWER -> "小文字"
-                                PasswordGenerator.CharSet.UPPER -> "大文字"
-                                PasswordGenerator.CharSet.DIGITS -> "数字"
-                                PasswordGenerator.CharSet.SYMBOLS -> "記号"
+                                PasswordGenerator.CharSet.LOWER -> stringResource(R.string.cs_lower)
+                                PasswordGenerator.CharSet.UPPER -> stringResource(R.string.cs_upper)
+                                PasswordGenerator.CharSet.DIGITS -> stringResource(R.string.cs_digits)
+                                PasswordGenerator.CharSet.SYMBOLS -> stringResource(R.string.cs_symbols)
                             },
                         )
                     }
                 }
-                TextButton({ regen() }) { Text("作り直す") }
+                TextButton({ regen() }) { Text(stringResource(R.string.regenerate)) }
             }
         },
-        confirmButton = { TextButton({ onUse(value) }) { Text("使う") } },
-        dismissButton = { TextButton(onDismiss) { Text("やめる") } },
+        confirmButton = { TextButton({ onUse(value) }) { Text(stringResource(R.string.use)) } },
+        dismissButton = { TextButton(onDismiss) { Text(stringResource(R.string.cancel)) } },
     )
 }
 
@@ -391,7 +393,7 @@ private fun SettingsScreen(m: AppModel) {
         val activity = ctx.findActivity() ?: return
         val master = m.masterForBiometric() ?: return
         authenticate(
-            activity, m.biometric.encryptCipher(), "生体認証を登録",
+            activity, m.biometric.encryptCipher(), ctx.getString(R.string.enroll_bio),
             onSuccess = { c ->
                 m.biometric.store(c, master)
                 bioOn = true
@@ -403,7 +405,7 @@ private fun SettingsScreen(m: AppModel) {
         if (u != null) scope.launch {
             val bytes = m.export() ?: return@launch
             info = runCatching { ctx.contentResolver.openOutputStream(u)!!.use { it.write(bytes) } }
-                .fold({ ".kdbx を書き出しました" }, { "書き出せませんでした" })
+                .fold({ ctx.getString(R.string.kdbx_exported) }, { ctx.getString(R.string.export_failed) })
         }
     }
     val csvLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { u ->
@@ -417,107 +419,107 @@ private fun SettingsScreen(m: AppModel) {
     }
     Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            TextButton({ apply(); m.screen = Screen.List }) { Text("戻る") }
-            Text("設定", style = MaterialTheme.typography.titleLarge)
+            TextButton({ apply(); m.screen = Screen.List }) { Text(stringResource(R.string.back)) }
+            Text(stringResource(R.string.settings), style = MaterialTheme.typography.titleLarge)
         }
-        Text("同期", style = MaterialTheme.typography.titleMedium)
-        OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth(), label = { Text("Worker の URL") }, singleLine = true)
-        PasswordField(token, { token = it }, "同期トークン")
-        OutlinedTextField(device, { device = it }, Modifier.fillMaxWidth(), label = { Text("この端末の名前") }, singleLine = true)
-        Button({ apply(); scope.launch { m.sync() } }, enabled = !m.busy) { Text("今すぐ同期") }
-        Text(if (m.pendingSync) "未同期の変更があります" else (m.lastSync ?: "未同期"))
+        Text(stringResource(R.string.sync), style = MaterialTheme.typography.titleMedium)
+        OutlinedTextField(url, { url = it }, Modifier.fillMaxWidth(), label = { Text("Worker URL") }, singleLine = true)
+        PasswordField(token, { token = it }, stringResource(R.string.sync_token))
+        OutlinedTextField(device, { device = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.device_name)) }, singleLine = true)
+        Button({ apply(); scope.launch { m.sync() } }, enabled = !m.busy) { Text(stringResource(R.string.sync_now)) }
+        Text(if (m.pendingSync) stringResource(R.string.pending_sync) else (m.lastSync ?: stringResource(R.string.not_synced)))
         HorizontalDivider()
-        Text("自動ロック", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.auto_lock), style = MaterialTheme.typography.titleMedium)
         OutlinedTextField(
-            minutes, { minutes = it }, Modifier.fillMaxWidth(), label = { Text("バックグラウンドで何分たったらロックするか") },
+            minutes, { minutes = it }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.auto_lock_minutes)) },
             singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         )
-        Text("画面を消したときは、すぐにロックします。", style = MaterialTheme.typography.bodySmall)
+        Text(stringResource(R.string.auto_lock_note), style = MaterialTheme.typography.bodySmall)
         HorizontalDivider()
-        Text("ロック解除", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.unlock_title), style = MaterialTheme.typography.titleMedium)
         if (m.biometric.available()) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Switch(bioOn, { setBiometric(it) })
-                Text("生体認証で開く")
+                Text(stringResource(R.string.open_with_bio))
             }
-            Text("指紋などを登録し直すと無効になります。そのときはマスターパスワードで開いて登録し直してください。", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.bio_reenroll), style = MaterialTheme.typography.bodySmall)
         } else {
-            Text("この端末では生体認証を使えません(指紋などの登録がありません)。", style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(R.string.bio_unavailable), style = MaterialTheme.typography.bodySmall)
         }
         HorizontalDivider()
-        Text("漏洩チェック", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.audit_title), style = MaterialTheme.typography.titleMedium)
         Button({ scope.launch { m.audit() } }, enabled = !m.auditing && m.entries.isNotEmpty()) {
-            Text(if (m.auditing) "チェック中…" else "漏洩チェック")
+            Text(if (m.auditing) stringResource(R.string.checking) else stringResource(R.string.audit_title))
         }
         Text(
-            "パスワードの SHA-1 の先頭 5 文字だけを Have I Been Pwned に送ります。パスワード自体は送りません。",
+            stringResource(R.string.audit_privacy),
             style = MaterialTheme.typography.bodySmall,
         )
         HorizontalDivider()
-        Text("データ", style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.data), style = MaterialTheme.typography.titleMedium)
         OutlinedButton(
             { apply(); scope.launch { history = m.history() } },
             enabled = !m.busy && m.settings.syncConfigured,
-        ) { Text("履歴から復元") }
-        OutlinedButton({ exportLauncher.launch("pwvault.kdbx") }) { Text(".kdbx を書き出す(暗号化済み)") }
-        OutlinedButton({ csvLauncher.launch(arrayOf("text/*", "*/*")) }) { Text("CSV を取り込む(Chrome / Bitwarden)") }
+        ) { Text(stringResource(R.string.restore_history)) }
+        OutlinedButton({ exportLauncher.launch("pwvault.kdbx") }) { Text(stringResource(R.string.export_kdbx)) }
+        OutlinedButton({ csvLauncher.launch(arrayOf("text/*", "*/*")) }) { Text(stringResource(R.string.import_csv)) }
         info?.let { Text(it) }
     }
 
     m.auditReport?.let { r ->
         AlertDialog(
             onDismissRequest = { m.auditReport = null },
-            title = { Text(if (r.breached.isEmpty()) "漏洩済みの項目はありません" else "漏洩済み ${r.breached.size} 件") },
+            title = { Text(if (r.breached.isEmpty()) stringResource(R.string.audit_none) else stringResource(R.string.audit_n_breached, r.breached.size)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     LazyColumn(Modifier.weight(1f, fill = false)) {
                         items(r.breached) { b ->
                             val n = (b.result as BreachResult.Breached).count
-                            Text("${b.title.ifEmpty { "(無題)" }}  $n 回出現", Modifier.padding(vertical = 4.dp))
+                            Text(stringResource(R.string.audit_seen, b.title.ifEmpty { stringResource(R.string.untitled) }, n), Modifier.padding(vertical = 4.dp))
                         }
                     }
-                    Text("問題なし ${r.cleanCount} 件", style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(R.string.audit_clean_n, r.cleanCount), style = MaterialTheme.typography.bodySmall)
                     if (r.skippedCount > 0) {
                         Text(
-                            "調べられなかった項目 ${r.skippedCount} 件(通信できませんでした。漏洩なしという意味ではありません)",
+                            stringResource(R.string.audit_skipped_n, r.skippedCount),
                             style = MaterialTheme.typography.bodySmall,
                         )
                     }
                 }
             },
-            confirmButton = { TextButton({ m.auditReport = null }) { Text("閉じる") } },
+            confirmButton = { TextButton({ m.auditReport = null }) { Text(stringResource(R.string.close)) } },
         )
     }
     history?.let { list ->
         AlertDialog(
             onDismissRequest = { history = null },
-            title = { Text("復元する版を選ぶ") },
+            title = { Text(stringResource(R.string.restore_pick)) },
             text = {
-                if (list.isEmpty()) Text("履歴がありません")
+                if (list.isEmpty()) Text(stringResource(R.string.no_history))
                 else LazyColumn {
                     items(list) { h ->
                         Column(Modifier.fillMaxWidth().clickable { restoreTarget = h; history = null }.padding(vertical = 8.dp)) {
-                            Text("版 ${h.version}  ${h.createdAt}")
+                            Text(stringResource(R.string.version_line, h.version, h.createdAt))
                             Text("${h.device}  ${h.size / 1024} KB", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
             },
-            confirmButton = { TextButton({ history = null }) { Text("閉じる") } },
+            confirmButton = { TextButton({ history = null }) { Text(stringResource(R.string.close)) } },
         )
     }
     restoreTarget?.let { h ->
         AlertDialog(
             onDismissRequest = { restoreTarget = null },
-            title = { Text("版 ${h.version} に戻しますか") },
-            text = { Text("いまの内容は端末内に退避します。戻した内容は、同期で他の端末にも反映されます。") },
+            title = { Text(stringResource(R.string.restore_confirm_title, h.version)) },
+            text = { Text(stringResource(R.string.restore_confirm_body)) },
             confirmButton = {
                 TextButton({
                     restoreTarget = null
                     scope.launch { info = m.restore(h) }
-                }) { Text("戻す") }
+                }) { Text(stringResource(R.string.restore)) }
             },
-            dismissButton = { TextButton({ restoreTarget = null }) { Text("やめる") } },
+            dismissButton = { TextButton({ restoreTarget = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 }

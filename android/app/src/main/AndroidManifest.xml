@@ -4,7 +4,7 @@
     <application
         android:name=".PwApplication"
         android:allowBackup="false"
-        android:label="PW Vault"
+        android:label="@string/app_name"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
             android:name=".MainActivity"
