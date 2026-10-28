@@ -35,7 +35,11 @@ import dev.yokomichi.pwvault.app.PasswordField
 import dev.yokomichi.pwvault.app.authenticate
 import dev.yokomichi.pwvault.app.findActivity
 import dev.yokomichi.pwvault.core.AutofillMatch
+import dev.yokomichi.pwvault.core.AutofillSave
+import dev.yokomichi.pwvault.core.PendingSaveStore
+import dev.yokomichi.pwvault.core.SavePlan
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 /**
  * ロック中の解除(と、解除したあとの入力の応答)。設計書 §5-4。
@@ -48,17 +52,18 @@ class AutofillAuthActivity : FragmentActivity() {
         super.onCreate(savedInstanceState)
         // 設計書 §5-3: スクリーンショットと最近のアプリ一覧に中身を出さない
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
-        val login = AutofillResponses.loginFrom(intent)
-        if (login == null || login.packageName == AutofillMatch.SELF_PACKAGE) {
-            setResult(Activity.RESULT_CANCELED)
-            finish()
+        val saveToken = intent.getStringExtra(AutofillResponses.EXTRA_SAVE_TOKEN)
+        val login = if (saveToken == null) AutofillResponses.loginFrom(intent) else null
+        if (saveToken == null && (login == null || login.packageName == AutofillMatch.SELF_PACKAGE)) {
+            cancel()
             return
         }
         setContent {
             MaterialTheme {
                 Scaffold { pad ->
                     Column(Modifier.fillMaxSize().padding(pad).padding(16.dp)) {
-                        FillFlow(model, login, ::deliver, ::cancel)
+                        if (saveToken != null) SaveFlow(model, saveToken, onDone = { finish() })
+                        else FillFlow(model, login!!, ::deliver, ::cancel)
                     }
                 }
             }
@@ -170,5 +175,84 @@ internal fun UnlockPanel(m: AppModel, onUnlocked: () -> Unit, onCancel: () -> Un
         ) { Text(stringResource(R.string.open_action)) }
         if (bio) OutlinedButton({ unlockWithBiometric() }, enabled = !m.busy) { Text(stringResource(R.string.open_with_bio)) }
         OutlinedButton(onCancel) { Text(stringResource(R.string.cancel)) }
+    }
+}
+
+/** 保存の流れ: (ロック中なら解除) → 確認 → 利用者が押したときだけ書く。値は置き場から取り、画面の状態に長く持たない。 */
+@Composable
+private fun SaveFlow(m: AppModel, token: String, onDone: () -> Unit) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val store = PendingSaveStore.shared
+    val pending = remember { store.peek(token) }
+    if (pending == null) {
+        LaunchedEffect(Unit) {
+            Toast.makeText(ctx, R.string.autofill_expired, Toast.LENGTH_SHORT).show()
+            onDone()
+        }
+        return
+    }
+    fun giveUp() {
+        store.discard(token)
+        onDone()
+    }
+    var unlocked by remember { mutableStateOf(m.isUnlocked) }
+    var plan by remember { mutableStateOf<SavePlan?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    LaunchedEffect(unlocked) {
+        if (!unlocked) return@LaunchedEffect
+        val entries = m.autofillEntries()
+        if (entries == null) unlocked = false else plan = AutofillSave.plan(entries, pending, UUID.randomUUID().toString())
+    }
+    val p = plan
+    if (!unlocked || p == null) {
+        if (!unlocked) UnlockPanel(m, onUnlocked = { unlocked = true }, onCancel = ::giveUp) else Text(stringResource(R.string.processing))
+        return
+    }
+    val e = p.entry
+    val where = if (e.androidPackage.isNotEmpty()) stringResource(R.string.autofill_app) to e.androidPackage
+    else stringResource(R.string.autofill_site) to e.url
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            stringResource(if (p.isUpdate) R.string.autofill_update_title else R.string.autofill_save_title),
+            style = MaterialTheme.typography.headlineSmall,
+        )
+        m.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+        ConfirmRow(stringResource(R.string.title), AutofillResponses.displayTitle(ctx, e))
+        ConfirmRow(stringResource(R.string.username), e.username)
+        ConfirmRow(where.first, where.second)
+        ConfirmRow(stringResource(R.string.password), "••••••••")
+        Button(
+            onClick = {
+                saving = true
+                scope.launch {
+                    if (!m.isUnlocked) {
+                        // 確認の間に自動ロックされた。値は置き場に残したまま、解除からやり直す
+                        saving = false
+                        unlocked = false
+                        return@launch
+                    }
+                    // 利用者が押したときだけ、置き場から取り出して書く(取り出したあとは置き場から消える)
+                    if (store.take(token) == null) {
+                        Toast.makeText(ctx, R.string.autofill_expired, Toast.LENGTH_SHORT).show()
+                        onDone()
+                        return@launch
+                    }
+                    m.save(p.entry)
+                    if (m.message == null) Toast.makeText(ctx, R.string.autofill_saved, Toast.LENGTH_SHORT).show()
+                    onDone()
+                }
+            },
+            enabled = !saving && !m.busy,
+        ) { Text(stringResource(if (p.isUpdate) R.string.autofill_update else R.string.save)) }
+        OutlinedButton(::giveUp, enabled = !saving) { Text(stringResource(R.string.cancel)) }
+    }
+}
+
+@Composable
+private fun ConfirmRow(label: String, value: String) {
+    Column {
+        Text(label, style = MaterialTheme.typography.labelMedium)
+        Text(value.ifEmpty { "-" })
     }
 }

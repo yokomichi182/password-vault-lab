@@ -38,16 +38,19 @@ object AutofillMatch {
      * 候補にする項目。種類がパスワード(isLogin)のものだけを先に絞り、そのあと要求元と照合する。
      * 要求元が Tobari 自身のときは空。タイトルの順で最大 [MAX_CANDIDATES] 件。
      */
-    fun candidates(entries: List<Entry>, packageName: String, webDomain: String?): List<Entry> {
+    fun candidates(entries: List<Entry>, packageName: String, webDomain: String?): List<Entry> =
+        matching(entries, packageName, webDomain)
+            .sortedWith(compareBy<Entry> { it.title.lowercase() }.thenBy { it.title }.thenBy { it.uuid })
+            .take(MAX_CANDIDATES)
+
+    /** 件数の上限をかけない一致(保存のとき、更新する項目を探すのに使う)。 */
+    fun matching(entries: List<Entry>, packageName: String, webDomain: String?): List<Entry> {
         if (packageName == SELF_PACKAGE) return emptyList()
         val logins = entries.filter { it.isLogin }
-        val matched = when (val s = sourceOf(packageName, webDomain)) {
+        return when (val s = sourceOf(packageName, webDomain)) {
             is Source.App -> logins.filter { matchesApp(it, s.packageName) }
             is Source.Browser -> logins.filter { matchesBrowser(it, s.webDomain) }
         }
-        return matched
-            .sortedWith(compareBy<Entry> { it.title.lowercase() }.thenBy { it.title }.thenBy { it.uuid })
-            .take(MAX_CANDIDATES)
     }
 
     // ---- アプリ ----

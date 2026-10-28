@@ -36,7 +36,7 @@ object ScreenParser {
     private class Item(val node: AssistStructure.ViewNode, val hidden: Boolean, val noExclude: Boolean)
 
     /** 画面を上から順に走査する。[withValues] が true のときだけ、入力された文字を読む。 */
-    fun parse(structure: AssistStructure, withValues: Boolean): ParsedScreen {
+    fun parse(structure: AssistStructure, withValues: Boolean, ignoreVisibility: Boolean = false): ParsedScreen {
         val fields = ArrayList<ParsedField>()
         val stack = ArrayDeque<Item>()
         for (i in structure.windowNodeCount - 1 downTo 0) {
@@ -46,7 +46,7 @@ object ScreenParser {
         while (stack.isNotEmpty() && visited++ < MAX_NODES) {
             val item = stack.removeLast()
             val node = item.node
-            val hidden = item.hidden || node.visibility != View.VISIBLE
+            val hidden = !ignoreVisibility && (item.hidden || node.visibility != View.VISIBLE)
             val important = node.importantForAutofill
             val noExclude = item.noExclude || important == AutofillFields.IMPORTANT_NO_EXCLUDE_DESCENDANTS
             val id = node.autofillId
