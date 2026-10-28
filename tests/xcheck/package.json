@@ -1,0 +1,12 @@
+{
+  "name": "pwvault-xcheck",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node check.mjs"
+  },
+  "dependencies": {
+    "hash-wasm": "^4.12.0",
+    "kdbxweb": "^2.1.1"
+  }
+}
