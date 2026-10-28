@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- テーマアイコン(Android 13 以降)用。前景と同じ形を、にじみなしの単色で描く -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <path
+        android:pathData="M512,232a122,122 0,0 1,58 229L552,580H472L454,461A122,122 0,0 1,512 232z M512,310a44,44 0,1 0,0 88a44,44 0,1 0,0 -88z"
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd" />
+    <path
+        android:pathData="M494,600V650L392,730M530,600V650L632,730M512,600V730"
+        android:strokeWidth="18"
+        android:strokeColor="#FFFFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M384,738m-26,0a26,26 0,1 0,52 0a26,26 0,1 0,-52 0M640,738m-26,0a26,26 0,1 0,52 0a26,26 0,1 0,-52 0M512,760m-26,0a26,26 0,1 0,52 0a26,26 0,1 0,-52 0"
+        android:fillColor="#FFFFFFFF" />
+</vector>

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  design/tobari-icon.svg の鍵穴と回路。
+  ベクターでは SVG のぼかし(glow)を描けないため、半透明の太い線を下に重ねて光のにじみに近づける。
+  形はすべて安全域(中心から半径 313、108dp 中の 66dp)に収まる。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+    <!-- にじみ -->
+    <path
+        android:pathData="M512,232a122,122 0,0 1,58 229L552,580H472L454,461A122,122 0,0 1,512 232z"
+        android:strokeWidth="28"
+        android:strokeColor="#22E5FF"
+        android:strokeAlpha="0.25"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M494,600V650L392,730M530,600V650L632,730M512,600V730"
+        android:strokeWidth="44"
+        android:strokeColor="#22E5FF"
+        android:strokeAlpha="0.25"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M384,738m-40,0a40,40 0,1 0,80 0a40,40 0,1 0,-80 0M640,738m-40,0a40,40 0,1 0,80 0a40,40 0,1 0,-80 0M512,760m-40,0a40,40 0,1 0,80 0a40,40 0,1 0,-80 0"
+        android:fillColor="#22E5FF"
+        android:fillAlpha="0.25" />
+    <!-- 鍵穴: 円と台形を1つの形に -->
+    <path
+        android:pathData="M512,232a122,122 0,0 1,58 229L552,580H472L454,461A122,122 0,0 1,512 232z M512,310a44,44 0,1 0,0 88a44,44 0,1 0,0 -88z"
+        android:fillColor="#22E5FF"
+        android:fillType="evenOdd" />
+    <!-- 回路の配線とノード -->
+    <path
+        android:pathData="M494,600V650L392,730M530,600V650L632,730M512,600V730"
+        android:strokeWidth="18"
+        android:strokeColor="#22E5FF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M384,738m-26,0a26,26 0,1 0,52 0a26,26 0,1 0,-52 0M640,738m-26,0a26,26 0,1 0,52 0a26,26 0,1 0,-52 0M512,760m-26,0a26,26 0,1 0,52 0a26,26 0,1 0,-52 0"
+        android:fillColor="#22E5FF" />
+</vector>
