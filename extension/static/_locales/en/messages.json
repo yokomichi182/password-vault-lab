@@ -1,4 +1,76 @@
 {
   "extName": { "message": "PW Vault" },
-  "extDescription": { "message": "Autofill from your own sync server. Read-only." }
+  "extDescription": { "message": "Autofill from your own sync server. Read-only." },
+
+  "notConfigured": { "message": "Set up the sync server in Settings first." },
+  "settings": { "message": "Settings" },
+  "masterPassword": { "message": "Master password" },
+  "unlock": { "message": "Unlock" },
+  "unlocking": { "message": "Unlocking..." },
+  "reload": { "message": "Reload" },
+  "cancel": { "message": "Cancel" },
+  "locked": { "message": "Locked" },
+  "lock": { "message": "Lock" },
+  "fill": { "message": "Fill" },
+  "filled": { "message": "Filled." },
+  "fillFailed": { "message": "Could not fill this page." },
+  "copyUser": { "message": "Copy user name" },
+  "copyPassword": { "message": "Copy password" },
+  "copied": {
+    "message": "Copied. The clipboard is cleared in $SECONDS$ seconds.",
+    "placeholders": { "seconds": { "content": "$1" } }
+  },
+  "copyFailed": { "message": "Could not copy." },
+  "breachCheck": { "message": "Check this item for leaks" },
+  "breachChecking": { "message": "Checking..." },
+  "breachPwned": {
+    "message": "Leaked ($COUNT$ times)",
+    "placeholders": { "count": { "content": "$1" } }
+  },
+  "breachClean": { "message": "Not found in known leaks." },
+  "breachError": { "message": "Could not check." },
+  "errWrongMaster": { "message": "Wrong master password." },
+  "errEmpty": { "message": "The vault is empty." },
+  "errVaultUnopenable": { "message": "Cannot open the vault on the server (the master password may differ)." },
+  "errUnreachable": { "message": "Cannot reach the sync server." },
+  "errAuth": { "message": "The sync server did not accept the token." },
+  "errNotConfigured": { "message": "Set up the sync server in Settings first." },
+  "errUnknown": { "message": "Something went wrong." },
+  "cacheNote": {
+    "message": "Could not sync. Using the saved copy. Last sync: $TIME$",
+    "placeholders": { "time": { "content": "$1" } }
+  },
+  "lastSync": {
+    "message": "Last sync: $TIME$",
+    "placeholders": { "time": { "content": "$1" } }
+  },
+  "search": { "message": "Search title, user name, URL" },
+  "forThisPage": { "message": "For this page" },
+  "allItems": { "message": "All items" },
+  "noItems": { "message": "No items." },
+
+  "optionsTitle": { "message": "PW Vault settings" },
+  "syncSection": { "message": "Sync server" },
+  "syncUrl": { "message": "Sync server URL" },
+  "syncUrlHint": { "message": "https://..., or http://localhost for testing. Only this origin is requested as a permission." },
+  "vaultName": { "message": "Vault name" },
+  "syncToken": { "message": "Sync token" },
+  "syncTokenHint": { "message": "Stored only after being locked with your master password." },
+  "masterHint": { "message": "Used to lock the token and to check that the vault opens. Not stored." },
+  "saveSync": { "message": "Check and save" },
+  "alreadyConfigured": { "message": "A sync server is already set up. Saving again replaces it." },
+  "errInvalidUrl": { "message": "Enter an https:// URL (or http://localhost)." },
+  "errInvalidName": { "message": "The vault name may contain a-z, 0-9 and - (1 to 32 characters)." },
+  "errNeedToken": { "message": "Enter the sync token." },
+  "errNeedMaster": { "message": "Enter the master password." },
+  "errPermission": { "message": "Permission to reach the sync server was not granted." },
+  "saving": { "message": "Checking..." },
+  "savedSync": { "message": "Saved. The vault opened with this master password." },
+  "behaviorSection": { "message": "Behavior" },
+  "sessionHours": { "message": "Session length (hours, 1 to 24)" },
+  "sessionHoursHint": { "message": "Applies from the next unlock." },
+  "onloadFill": { "message": "Fill automatically when a page loads" },
+  "saveBehavior": { "message": "Save" },
+  "savedBehavior": { "message": "Saved." },
+  "errSetupFirst": { "message": "Set up the sync server first." }
 }

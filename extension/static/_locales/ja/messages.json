@@ -1,4 +1,76 @@
 {
   "extName": { "message": "PW Vault" },
-  "extDescription": { "message": "自分の同期先から自動入力します。読み取り専用です。" }
+  "extDescription": { "message": "自分の同期先から自動入力します。読み取り専用です。" },
+
+  "notConfigured": { "message": "先に設定画面で同期先を設定してください。" },
+  "settings": { "message": "設定" },
+  "masterPassword": { "message": "マスターパスワード" },
+  "unlock": { "message": "解除" },
+  "unlocking": { "message": "解除しています..." },
+  "reload": { "message": "再読み込み" },
+  "cancel": { "message": "やめる" },
+  "locked": { "message": "ロック中" },
+  "lock": { "message": "ロック" },
+  "fill": { "message": "入力" },
+  "filled": { "message": "入力しました。" },
+  "fillFailed": { "message": "このページには入力できませんでした。" },
+  "copyUser": { "message": "ユーザー名をコピー" },
+  "copyPassword": { "message": "パスワードをコピー" },
+  "copied": {
+    "message": "コピーしました。$SECONDS$ 秒後にクリップボードを消します。",
+    "placeholders": { "seconds": { "content": "$1" } }
+  },
+  "copyFailed": { "message": "コピーできませんでした。" },
+  "breachCheck": { "message": "この項目の漏洩チェック" },
+  "breachChecking": { "message": "確かめています..." },
+  "breachPwned": {
+    "message": "漏洩済み($COUNT$ 回)",
+    "placeholders": { "count": { "content": "$1" } }
+  },
+  "breachClean": { "message": "既知の漏洩には見つかりませんでした。" },
+  "breachError": { "message": "確かめられませんでした。" },
+  "errWrongMaster": { "message": "マスターパスワードが違います。" },
+  "errEmpty": { "message": "保管庫が空です。" },
+  "errVaultUnopenable": { "message": "サーバーの保管庫を開けません(マスターパスワードが違う可能性があります)。" },
+  "errUnreachable": { "message": "同期先に接続できません。" },
+  "errAuth": { "message": "同期先がトークンを受け付けませんでした。" },
+  "errNotConfigured": { "message": "先に設定画面で同期先を設定してください。" },
+  "errUnknown": { "message": "うまくいきませんでした。" },
+  "cacheNote": {
+    "message": "同期できないため、保存してあるコピーを使っています。前回の同期: $TIME$",
+    "placeholders": { "time": { "content": "$1" } }
+  },
+  "lastSync": {
+    "message": "前回の同期: $TIME$",
+    "placeholders": { "time": { "content": "$1" } }
+  },
+  "search": { "message": "タイトル・ユーザー名・URL を検索" },
+  "forThisPage": { "message": "このページの項目" },
+  "allItems": { "message": "すべての項目" },
+  "noItems": { "message": "項目がありません。" },
+
+  "optionsTitle": { "message": "PW Vault の設定" },
+  "syncSection": { "message": "同期先" },
+  "syncUrl": { "message": "同期先の URL" },
+  "syncUrlHint": { "message": "https://... 、試すときは http://localhost。このオリジンだけを権限として求めます。" },
+  "vaultName": { "message": "保管庫の名前" },
+  "syncToken": { "message": "同期トークン" },
+  "syncTokenHint": { "message": "マスターパスワードで鍵をかけたうえでだけ保存します。" },
+  "masterHint": { "message": "トークンに鍵をかけ、保管庫が開くかを確かめるために使います。保存しません。" },
+  "saveSync": { "message": "確かめて保存" },
+  "alreadyConfigured": { "message": "同期先は設定済みです。もう一度保存すると置き換わります。" },
+  "errInvalidUrl": { "message": "https:// の URL を入れてください(試験用は http://localhost)。" },
+  "errInvalidName": { "message": "保管庫の名前は a-z、0-9、- の 1〜32 文字です。" },
+  "errNeedToken": { "message": "同期トークンを入れてください。" },
+  "errNeedMaster": { "message": "マスターパスワードを入れてください。" },
+  "errPermission": { "message": "同期先への通信の権限が許可されませんでした。" },
+  "saving": { "message": "確かめています..." },
+  "savedSync": { "message": "保存しました。このマスターパスワードで保管庫が開きました。" },
+  "behaviorSection": { "message": "ふるまい" },
+  "sessionHours": { "message": "セッションの長さ(時間、1〜24)" },
+  "sessionHoursHint": { "message": "次の解除から変わります。" },
+  "onloadFill": { "message": "ページの読み込み時に自動で入力する" },
+  "saveBehavior": { "message": "保存" },
+  "savedBehavior": { "message": "保存しました。" },
+  "errSetupFirst": { "message": "先に同期先を設定してください。" }
 }

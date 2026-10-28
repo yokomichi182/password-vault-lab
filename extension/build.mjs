@@ -36,6 +36,7 @@ for (const [name, entry] of Object.entries(entries)) {
     sourcemap: false,
     minify: false,
     legalComments: "none",
+    alias: { crypto: path.join(root, "src/shims/empty.ts") },
     define: {
       __TEST__: JSON.stringify(isTest),
       __BREACH_BASE__: JSON.stringify(breachBase),
