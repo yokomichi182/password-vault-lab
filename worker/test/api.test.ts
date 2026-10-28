@@ -266,6 +266,20 @@ describe("履歴と世代管理", () => {
       await env.DB.exec("DROP TRIGGER IF EXISTS reject_history_delete");
     }
   });
+
+  it("If-Match が最新より大きい PUT は 409 で、履歴を消さない", async () => {
+    for (let v = 0; v < 60; v++) {
+      expect((await put("/vaults/main", bytes(2, v & 0xff), String(v))).status).toBe(200);
+    }
+    const res = await put("/vaults/main", bytes(2, 99), "100");
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ version: 60 });
+
+    const hist = (await (await call("/vaults/main/history")).json()) as { version: number }[];
+    expect(hist.length).toBe(50);
+    expect(hist[0]!.version).toBe(60);
+    expect(hist.at(-1)!.version).toBe(11);
+  });
 });
 
 // 最後に実行すること。
