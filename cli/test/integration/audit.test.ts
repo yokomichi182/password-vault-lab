@@ -137,7 +137,7 @@ describe("4-2. 束ねた pwm audit をモックサーバーで通す", () => {
     transport.stderr?.on("data", (d: Buffer) => stderr.push(d));
     try {
       const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-      expect(tools).toEqual(["audit", "list_titles", "read_credential", "run"]);
+      expect(tools).toEqual(["audit", "list_titles", "read_credential", "request_credential", "request_fill", "run"]);
       const text = (r: unknown) => (r as { content: { text: string }[] }).content.map((c) => c.text).join("");
       const raw = text(await client.callTool({ name: "audit", arguments: {} }));
       expect(JSON.parse(raw)).toEqual({ pwned: [{ title: "it-pwned", count: 31337 }], clean: 2, skipped: 0, notApplicable: 1 });

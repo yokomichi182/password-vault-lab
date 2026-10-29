@@ -2,6 +2,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { createTokenVault } from "../../extension/src/shared/vault.ts";
+import type { Protector } from "../src/ctx.ts";
 import type { ApprovalChoice, ApprovalDialog, ApprovalRequest, UnlockedInfo } from "../src/main/approveDialog.ts";
 import { FILES } from "../src/store.ts";
 import type { MockSync } from "./mockSync.ts";
@@ -23,14 +24,14 @@ export async function makeWorld(
   mock: MockSync,
   mainItems: TestItem[],
   autoItems: TestItem[] = [{ title: "seed", password: `${CANARY_AUTOM}-seed` }],
-  opts: { withMain?: boolean } = {},
+  opts: { withMain?: boolean; protector?: Protector } = {},
 ): Promise<ApproveWorld> {
   seq += 1;
   const autoVault = `ap-a${seq}`;
   const mainVault = `ap-m${seq}`;
   mock.tokens.set(`${TOKEN_AUTOM}-${seq}`, autoVault);
   mock.tokens.set(`${TOKEN_MAIN}-${seq}`, mainVault);
-  const home = await makeHome(autoItems, { token: `${TOKEN_AUTOM}-${seq}`, syncUrl: mock.url, vault: autoVault });
+  const home = await makeHome(autoItems, { token: `${TOKEN_AUTOM}-${seq}`, syncUrl: mock.url, vault: autoVault, ...(opts.protector ? { protector: opts.protector } : {}) });
   mock.setVault(autoVault, new Uint8Array(await readFile(path.join(home.dir, FILES.automationKdbx))));
   if (opts.withMain !== false) {
     mock.setVault(mainVault, await makeKdbx({ master: MASTER }, mainItems));
