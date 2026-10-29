@@ -58,6 +58,10 @@ async function askValueTwice(ctx: Ctx): Promise<string> {
 export async function cmdAutoInit(ctx: Ctx, args: string[]): Promise<number> {
   const p = parse(args, { options: { "sync-url": { type: "string" }, vault: { type: "string" } } });
   requireTty(ctx);
+  // 手元に automation.* のどれか1つでもあれば、トークンを聞く前・通信の前に止める(上書きでキーと保管庫を失わない)。上書きの道は作らない
+  for (const f of [FILES.automationKdbx, FILES.automationKey, FILES.automationToken]) {
+    if ((await readIfExists(path.join(ctx.home, f))) !== null) throw new CliError("alreadyInitialized");
+  }
   const cfg = await readConfig(ctx.home);
   const rawUrl = p.values["sync-url"] ?? cfg.syncUrl;
   if (!rawUrl) throw new CliError("noConfig");
@@ -67,15 +71,9 @@ export async function cmdAutoInit(ctx: Ctx, args: string[]): Promise<number> {
   const token = await askHidden(ctx, "promptToken");
   if (token === "") throw new CliError("emptyInput");
 
-  // サーバーにすでに版があるときは作らない。文言は状況に合わせる:
-  // 手元にすでに保管庫とキーファイルがあるなら「すでに作ってある」。手元にないなら「そのキーファイルが手元にない」(実装指示_フェーズ5 の 3-7)
+  // サーバーにすでに版があるときは作らない(そのキーファイルが手元にないので開けない)
   const got = await fetchVault(syncUrl, vault, token, ctx.fetch);
-  if (got.kind === "ok") {
-    const haveLocal =
-      (await readIfExists(path.join(ctx.home, FILES.automationKdbx))) !== null &&
-      (await readIfExists(path.join(ctx.home, FILES.automationKey))) !== null;
-    throw new CliError(haveLocal ? "alreadyInitialized" : "serverHasVersion");
-  }
+  if (got.kind === "ok") throw new CliError("serverHasVersion");
   if (got.kind === "auth") throw new CliError("syncAuth");
   if (got.kind === "unreachable") throw new CliError("offlineNoWrite");
 

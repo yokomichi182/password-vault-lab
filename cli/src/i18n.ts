@@ -97,8 +97,8 @@ const messages = {
     ja: () => "同期先にはすでにこの保管庫の版があります。そのキーファイルは手元にないので開けません。何も作っていません。",
   },
   alreadyInitialized: {
-    en: () => "The automation vault is already set up on this PC. Nothing was created or changed.",
-    ja: () => "自動処理用の保管庫は、この PC にすでに作ってあります。何も作らず、何も変えていません。",
+    en: () => "An automation vault already exists on this PC. To create a new one, move the automation.* files in PWM_HOME elsewhere yourself first. Nothing was done.",
+    ja: () => "手元にすでに自動処理用の保管庫があります。作り直すときは、PWM_HOME の automation.* を自分で別の場所に移してから実行してください。何もしていません。",
   },
   saved: { en: () => "Saved.", ja: () => "保存しました。" },
   created: { en: () => "Created the automation vault.", ja: () => "自動処理用の保管庫を作りました。" },

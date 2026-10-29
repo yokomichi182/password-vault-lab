@@ -152,38 +152,43 @@ describe("5. pwm auto init・add・update・remove", () => {
     expect(mock.vaults.get(vault)!.version).toBe(1);
   });
 
-  it("init の文言(実装指示_フェーズ5 の 3-7): 手元にすでに保管庫とキーファイルがあるときは「すでに作ってある」。手元に無いときは「そのキーファイルが手元にない」。どちらも止まり方は同じ(終了コード 1、何も書かない)", async () => {
-    // 手元にある(2回目の init)
-    const { vault, home } = await seeded();
-    const before = (await readdir(home.dir)).sort();
-    const bytes = await readFile(path.join(home.dir, FILES.automationKdbx));
+  it("init: 手元に automation.kdbx・キーファイル・トークンのファイルのどれか1つでもあれば、トークンを聞かず・通信せず・何も書かずに止まる(終了コード 1)。何も無ければ作れる", async () => {
+    const vault = freshVault();
+    const names = [FILES.automationKdbx, FILES.automationKey, FILES.automationToken];
+    const subsets = [[0], [1], [2], [0, 1, 2]];
     for (const lang of ["en", "ja"] as const) {
-      const r = await run(home.dir, ["auto", "init", "--sync-url", mock.url, "--vault", vault], { answers: [TOKEN], lang });
-      expect(r.code).toBe(1);
-      expect(r.err).toContain(lang === "en" ? "already set up on this PC" : "すでに作ってあります");
-      expect(r.err).not.toContain(lang === "en" ? "not on this PC" : "手元にないので");
+      for (const subset of subsets) {
+        const dir = await tmpHome();
+        for (const i of subset) await writeFile(path.join(dir, names[i]!), `local-${i}`);
+        const before = await Promise.all((await readdir(dir)).sort().map(async (n) => [n, (await readFile(path.join(dir, n))).toString()]));
+        const reqs = mock.requests.length;
+        const r = await run(dir, ["auto", "init", "--sync-url", mock.url, "--vault", vault], { answers: [TOKEN], lang });
+        expect(r.code).toBe(1);
+        expect(r.asked).toEqual([]);
+        expect(mock.requests.length).toBe(reqs);
+        expect(r.err).toContain(lang === "en" ? "already exists on this PC" : "すでに自動処理用の保管庫があります");
+        const after = await Promise.all((await readdir(dir)).sort().map(async (n) => [n, (await readFile(path.join(dir, n))).toString()]));
+        expect(after).toEqual(before);
+      }
     }
-    expect((await readdir(home.dir)).sort()).toEqual(before);
-    expect(Buffer.from(await readFile(path.join(home.dir, FILES.automationKdbx))).equals(Buffer.from(bytes))).toBe(true);
-    expect(mock.vaults.get(vault)!.version).toBe(1);
-
-    // 手元に無い(別の PC で作った保管庫が同期先にある)
+    // --vault で別の名前を指定しても止まる
+    const dir = await tmpHome();
+    await writeFile(path.join(dir, FILES.automationKey), "k");
+    const r2 = await run(dir, ["auto", "init", "--sync-url", mock.url, "--vault", freshVault()], { answers: [TOKEN] });
+    expect(r2.code).toBe(1);
+    expect(r2.asked).toEqual([]);
+    // 手元に何も無ければ作れる
+    const vault3 = freshVault();
+    const clean = await tmpHome();
+    expect((await run(clean, ["auto", "init", "--sync-url", mock.url, "--vault", vault3], { answers: [TOKEN] })).code).toBe(0);
+    // 手元に無く、同期先に版があるとき(別の PC で作った)は従来どおり
     const vault2 = freshVault();
     mock.setVault(vault2, new Uint8Array(await makeKdbx({ keyFile: await createKeyFile() }, [])));
-    const dir = await tmpHome();
-    const r2 = await run(dir, ["auto", "init", "--sync-url", mock.url, "--vault", vault2], { answers: [TOKEN] });
-    expect(r2.code).toBe(1);
-    expect(r2.err).toContain("not on this PC");
-    expect(r2.err).not.toContain("already set up");
-    expect(await readdir(dir)).toEqual([]);
-
-    // 保管庫のファイルだけ・キーファイルだけが手元にあるときは「手元に無い」側(どちらかが欠けていれば開けない)
-    const half = await tmpHome();
-    await writeFile(path.join(half, FILES.automationKdbx), bytes);
-    mock.tokens.set(TOKEN, vault);
-    const r3 = await run(half, ["auto", "init", "--sync-url", mock.url, "--vault", vault], { answers: [TOKEN] });
+    const other = await tmpHome();
+    const r3 = await run(other, ["auto", "init", "--sync-url", mock.url, "--vault", vault2], { answers: [TOKEN] });
     expect(r3.code).toBe(1);
     expect(r3.err).toContain("not on this PC");
+    expect(await readdir(other)).toEqual([]);
   });
 
   it("init: トークンが違う(401)・通信できないときも、ファイルを置かない", async () => {
