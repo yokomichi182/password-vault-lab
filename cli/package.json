@@ -1,0 +1,27 @@
+{
+  "name": "pwm-cli",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "pwm": "dist/pwm.mjs",
+    "pwm-mcp": "dist/pwm-mcp.mjs"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node build.mjs && vitest run",
+    "test:integration": "node build.mjs && vitest run --config vitest.integration.config.ts",
+    "scan:canary": "node ../worker/scripts/scan-canary.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "hash-wasm": "^4.12.0",
+    "kdbxweb": "^2.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.0.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}
