@@ -40,7 +40,9 @@ afterAll(async () => {
 
 /** 入力を差し替えた同じプロセスで動かす(本物の DPAPI と本物の同期先)。 */
 async function interactive(argv: string[], answers: string[], captureOut = true) {
-  const t = makeCtx(home, { protector: windowsDpapi, fetchImpl: fetch, answers });
+  // 保存のあとの漏洩チェックの先は、何も待ち受けていないローカルのポート(実 API には送らない)
+  const environ = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, PWM_BREACH_URL: "http://127.0.0.1:9" };
+  const t = makeCtx(home, { protector: windowsDpapi, fetchImpl: fetch, answers, environ });
   const code = await runPwm(argv, t.ctx);
   captured.push(captureOut ? t.stdout() : "", t.stderr());
   return { code, out: t.stdout(), err: t.stderr() };
@@ -49,7 +51,7 @@ async function interactive(argv: string[], answers: string[], captureOut = true)
 /** 作った dist/pwm.mjs を別のプロセスで動かす(標準入力は端末でない)。 */
 function builtPwm(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const p = spawn(process.execPath, [PWM_JS, ...args], { env: { ...process.env, PWM_HOME: home, PWM_LANG: "en" }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+    const p = spawn(process.execPath, [PWM_JS, ...args], { env: { ...process.env, PWM_HOME: home, PWM_LANG: "en", PWM_BREACH_URL: "http://127.0.0.1:9" }, stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
     let stdout = "";
     let stderr = "";
     p.stdout.on("data", (d) => (stdout += d));

@@ -1,9 +1,11 @@
-// MCP サーバーの本体(stdio)。読むのは自動処理用の保管庫だけ。ネットワークを開かず、Cloudflare に触れない。
+// MCP サーバーの本体(stdio)。読むのは自動処理用の保管庫だけ。ネットワークの待ち受けを開かず、Cloudflare に触れない。
+// 通信するのは audit だけで、ctx.fetch が許す HIBP の範囲の API(/range/<5文字>)への GET に限る(フェーズ3.6、入口の pwm-mcp.ts で制限する)。
 // 本体の保管庫に関するモジュール(src/main/、commands/)は import しない(設計書 §11-2、AGENTS.md の決まり7)。
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { z } from "zod";
 import { errorLabel } from "../../extension/src/shared/vault.ts";
+import { auditDeps, auditVault } from "./audit.ts";
 import { withAutomationDb } from "./automation.ts";
 import { CliError, type Ctx } from "./ctx.ts";
 import { findOne, liveEntries, parseRef, resolveRef, toCredential } from "./kdbx.ts";
@@ -152,6 +154,28 @@ export function createServer(ctx: Ctx): McpServer {
           stdout_truncated: out.truncated,
           stderr_truncated: err.truncated,
         });
+      }),
+  );
+
+  server.registerTool(
+    "audit",
+    {
+      description:
+        "Check the passwords in the automation vault against known breaches (Have I Been Pwned, k-anonymity: only the first 5 characters of each SHA-1 hash are sent). " +
+        "Returns the titles and occurrence counts of breached items, and the counts of clean, skipped and not-applicable items. " +
+        "Never returns passwords, hashes, user names or URLs. " +
+        "The result is about the local copy of the vault as of the last `pwm sync`, not about the server. " +
+        "'skipped' means the item could not be checked (offline or no usable response); it does NOT mean clean. " +
+        "API keys and unknown item types are not applicable and are not sent. " +
+        "Takes tens of seconds for hundreds of items (requests are spaced by 200 ms).",
+      inputSchema: {},
+    },
+    () =>
+      guarded("audit", async () => {
+        const deps = auditDeps(ctx);
+        const r = await withAutomationDb(ctx, (db) => auditVault(db, deps));
+        ctx.err(`pwm-mcp: audit done (pwned ${r.pwned.length}, clean ${r.clean}, skipped ${r.skipped}, not applicable ${r.notApplicable})\n`);
+        return ok({ pwned: r.pwned, clean: r.clean, skipped: r.skipped, notApplicable: r.notApplicable });
       }),
   );
 

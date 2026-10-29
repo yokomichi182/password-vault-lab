@@ -12,6 +12,7 @@
     "test": "node build.mjs && vitest run",
     "test:integration": "node build.mjs && vitest run --config vitest.integration.config.ts",
     "serve:check": "node build.mjs && node dist/serve-check.mjs",
+    "serve:breach": "node build.mjs && node dist/serve-breach.mjs",
     "scan:canary": "node ../worker/scripts/scan-canary.mjs"
   },
   "dependencies": {

@@ -35,7 +35,7 @@ async function connect(home: string, opts: { lang?: string; execArgv?: string[] 
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [...(opts.execArgv ?? []), MCP_JS],
-    env: { PWM_HOME: home, PWM_LANG: opts.lang ?? "en" },
+    env: { PWM_HOME: home, PWM_LANG: opts.lang ?? "en", PWM_BREACH_URL: "http://127.0.0.1:9" }, // 実 API には向けない
     stderr: "pipe",
   });
   const stderr: Buffer[] = [];
@@ -50,12 +50,12 @@ const textOf = (r: unknown): string => (r as Text).content.map((c) => c.text).jo
 const call = (c: Client, name: string, args: Record<string, unknown> = {}) => c.callTool({ name, arguments: args });
 
 describe("9. MCP: ツールの一覧と応答", () => {
-  it("ツールの一覧がちょうど list_titles、read_credential、run の3つ。それぞれが表のとおり返す", async () => {
+  it("ツールの一覧がちょうど list_titles、read_credential、run、audit の4つ(audit の中身は mcpAudit.test.ts)。それぞれが表のとおり返す", async () => {
     const h = await realHome();
     const m = await connect(h.dir);
     try {
       const tools = await m.client.listTools();
-      expect(tools.tools.map((t) => t.name).sort()).toEqual(["list_titles", "read_credential", "run"]);
+      expect(tools.tools.map((t) => t.name).sort()).toEqual(["audit", "list_titles", "read_credential", "run"]);
       // API キーは read_credential でなく run で渡す使い方を勧める(設計書 §11-2)
       const rc = tools.tools.find((t) => t.name === "read_credential")!;
       expect(rc.description).toContain("prefer the `run` tool");
@@ -221,10 +221,36 @@ describe("13. 束ねた pwm-mcp.mjs に本体の入口が入っていない", ()
   it("本体のファイル名と --main の処理が入っていない(pwm.mjs には入っている)", async () => {
     const mcp = await readFile(MCP_JS, "utf8");
     const pwm = await readFile(PWM_JS, "utf8");
-    for (const needle of ["main.token.kdbx", "main.kdbx", "--main", "withMainDb", "Master password"]) {
+    for (const needle of ["main.token.kdbx", "main.kdbx", "--main", "withMainDb", "Master password", "putVault", "fetchVault"]) {
       expect(mcp.includes(needle), `mcp has ${needle}`).toBe(false);
       expect(pwm.includes(needle), `pwm has ${needle}`).toBe(true); // 検査が空振りでないことの確認
     }
+  });
+});
+
+describe("13b. 束ねた pwm-mcp.mjs の fetch の使い方(フェーズ3.6)", () => {
+  it("fetch を呼ぶのは許した包み(restrictToBreachRange)の中だけ。ほかに fetch の呼び出し・参照が増えていない", async () => {
+    const mcp = await readFile(MCP_JS, "utf8");
+    // 1. グローバルの fetch の直接の呼び出しが無い
+    expect(/(^|[^A-Za-z0-9_$.])fetch\s*\(/.test(mcp)).toBe(false);
+    // 2. グローバルの fetch を取り出すのは入口の1か所だけで、制限の包みの引数としてだけ渡す
+    expect(mcp.split("globalThis.fetch").length - 1).toBe(1);
+    expect(mcp).toContain("fetch: restrictToBreachRange(breachBase(environ), globalThis.fetch)");
+    // 3. 「fetch」という名前が残るのは、許した3か所(拡張の checkBreach の引数の既定値、Ctx の項目の名前2つ)だけ
+    const allowed = ["fetchImpl = fetch", "fetch: restrictToBreachRange(breachBase(environ), globalThis.fetch)", "fetch: ctx.fetch"];
+    let rest = mcp;
+    for (const a of allowed) rest = rest.split(a).join("");
+    const leftovers = [...rest.matchAll(/(^|[^A-Za-z0-9_$.])fetch(?![A-Za-z0-9_$])/g)].map((m) => rest.slice(Math.max(0, m.index - 40), m.index + 40));
+    expect(leftovers).toEqual([]);
+    // 3b. 「何か.fetch」の形は、globalThis(入口の1か所)と、渡された関数を呼ぶ ctx と deps だけ
+    const owners = new Set([...mcp.matchAll(/([A-Za-z0-9_$]+)\.fetch(?![A-Za-z0-9_$])/g)].map((m) => m[1]));
+    expect([...owners].sort()).toEqual(["ctx", "deps", "globalThis"]);
+    // 4. checkBreach の既定値のグローバルの fetch は、audit からは使われない(auditVault は包んだ fetch を渡し、保存後の検査は ctx.fetch を渡す)
+    expect(mcp).toContain("await checkBreach({ itemType: t.itemType, password: t.password }, deps.baseUrl, paced)");
+    // 5. 検査が空振りでない確認: pwm.mjs には同期の PUT・GET の処理が入っている
+    const pwm = await readFile(PWM_JS, "utf8");
+    expect(pwm.includes("putVault") && pwm.includes('method: "PUT"')).toBe(true);
+    expect(mcp.includes('method: "PUT"')).toBe(false);
   });
 });
 
@@ -238,15 +264,18 @@ describe("14. pwm-mcp が通信しない", () => {
     expect(r3.status).not.toBe(0);
   });
 
-  it("fetch と node:net・node:http(s) の接続を失敗させて起動しても、3つのツールが動く", async () => {
+  it("fetch と node:net・node:http(s) の接続を失敗させて起動しても、list_titles・read_credential・run が動き、audit は全部スキップを返す", async () => {
     const h = await realHome();
     const m = await connect(h.dir, { execArgv: ["--import", BLOCK] });
     try {
-      expect((await m.client.listTools()).tools).toHaveLength(3);
+      expect((await m.client.listTools()).tools).toHaveLength(4);
       expect(JSON.parse(textOf(await call(m.client, "list_titles")))).toHaveLength(4);
       expect(JSON.parse(textOf(await call(m.client, "read_credential", { title: "web" }))).username).toBe("alice");
       const ran = JSON.parse(textOf(await call(m.client, "run", { command: [process.execPath, CHILD, "check", "K", SECRET], env: { K: "svc" } })));
       expect(ran.stdout).toBe("match");
+      // audit: 通信を失敗させても、項目ごとにスキップ(漏洩なしに数えない)。パスワードの3項目がスキップ、API キーが対象外
+      const audit = JSON.parse(textOf(await call(m.client, "audit")));
+      expect(audit).toEqual({ pwned: [], clean: 0, skipped: 3, notApplicable: 1 });
     } finally {
       await m.close();
     }

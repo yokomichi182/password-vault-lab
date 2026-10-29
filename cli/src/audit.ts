@@ -137,3 +137,16 @@ export async function checkAfterSave(ctx: Ctx, db: Kdbx, title: string): Promise
     else ctx.err(msg(ctx.lang, "postSaveSkipped") + "\n");
   }
 }
+
+/** pwm-mcp に渡す fetch の包み。HIBP の基点の /range/<5文字> への GET だけを通し、それ以外は要求を出さずに失敗させる。 */
+export function restrictToBreachRange(base: string, inner: typeof fetch): typeof fetch {
+  const allowed = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/range/[0-9A-F]{5}$`);
+  return async (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : "";
+    const method = (init?.method ?? "GET").toUpperCase();
+    if (!allowed.test(url) || method !== "GET" || (init?.body !== undefined && init.body !== null)) {
+      throw new Error("pwm-mcp network is limited to the breach range API");
+    }
+    return inner(input, init);
+  };
+}
