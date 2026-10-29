@@ -56,3 +56,10 @@ button:disabled { opacity: 0.55; cursor: default; }
 .hint { color: var(--muted); font-size: 12px; margin: 2px 0 0; }
 fieldset { border: 1px solid var(--line); border-radius: 8px; margin: 16px 0; padding: 4px 12px 12px; }
 legend { font-weight: 600; padding: 0 6px; }
+body.approve { margin: 0; padding: 16px; }
+.approve-row { display: flex; gap: 8px; margin: 4px 0; }
+.approve-label { flex: 0 0 96px; color: var(--muted); }
+.approve-value { flex: 1; overflow-wrap: anywhere; font-weight: 600; }
+.approve-actions { margin-top: 12px; flex-wrap: wrap; }
+.approval-row { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 4px 0; }
+.approval-row .origin { overflow-wrap: anywhere; font-weight: 600; }

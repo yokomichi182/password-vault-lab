@@ -2,6 +2,7 @@ import { pathToFileURL } from "node:url";
 import { realpathSync } from "node:fs";
 import { errorLabel } from "../../extension/src/shared/vault.ts";
 import { cmdAudit } from "./commands/cmdAudit.ts";
+import { cmdFill } from "./commands/cmdFill.ts";
 import { cmdAutoAdd, cmdAutoInit, cmdAutoList, cmdAutoRemove, cmdAutoUpdate, cmdSync } from "./commands/cmdAuto.ts";
 import { cmdRead, cmdRun } from "./commands/cmdRead.ts";
 import { CliError, type Ctx } from "./ctx.ts";
@@ -27,6 +28,7 @@ const USAGE = `pwm - CLI for the automation vault (and read-only access to the m
   pwm read [--main] [--no-newline] TITLE[/FIELD]
   pwm audit [--main] [--notify]
   pwm run [--main] --env NAME=TITLE[/FIELD] [--env ...] [--timeout SECONDS] -- COMMAND [ARGS...]
+  pwm fill --title T [--url URL]
   pwm approve-credential --title T [--client NAME]   (used by pwm-mcp request_credential; always shows the approval dialog)
 `;
 
@@ -73,6 +75,8 @@ export async function runPwm(argv: string[], ctx: Ctx, deps?: PwmDeps): Promise<
         return await cmdAudit(ctx, rest);
       case "run":
         return await cmdRun(ctx, rest);
+      case "fill":
+        return await cmdFill(ctx, rest);
       case "approve-credential":
         return await cmdApproveCredential(ctx, rest, { dialog: deps?.dialog ?? (await defaultDialog()) });
       default:

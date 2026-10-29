@@ -73,5 +73,22 @@
   "onloadFill": { "message": "Fill automatically when a page loads" },
   "saveBehavior": { "message": "Save" },
   "savedBehavior": { "message": "Saved." },
-  "errSetupFirst": { "message": "Set up the sync server first." }
+  "errSetupFirst": { "message": "Set up the sync server first." },
+
+  "approveWindowTitle": {"message": "Approve autofill"},
+  "approveHeading": {"message": "An AI client wants this extension to fill a login on this site."},
+  "approveSite": {"message": "Site"},
+  "approveItem": {"message": "Item"},
+  "approveUser": {"message": "User name"},
+  "approveClient": {"message": "Requested by"},
+  "approveSelfReported": {"message": " (self-reported)"},
+  "approveNote": {"message": "If you approve, this extension fills this site (same scheme, host and port) whenever an AI asks, without asking again. You can remove the approval in Settings."},
+  "approveAllow": {"message": "Approve, fill, and allow this site from now on"},
+  "approveDeny": {"message": "Deny"},
+  "approvalsSection": {"message": "Approved sites for AI fill"},
+  "approvalsHint": {"message": "Sites where an AI client may ask this extension to fill a login without asking you again. Autofill on page load does not use this list."},
+  "approvalsEmpty": {"message": "No approved sites."},
+  "approvalsRemove": {"message": "Remove"},
+  "approvalsConfirm": {"message": "Remove $ORIGIN$ from the approved sites?", "placeholders": {"origin": {"content": "$1"}}},
+  "approvalsApprovedAt": {"message": "approved $TIME$", "placeholders": {"time": {"content": "$1"}}}
 }

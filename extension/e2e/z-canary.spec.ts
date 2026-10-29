@@ -10,8 +10,11 @@ test("chrome.storage.local の全体に目印が無い(トークンの平文も�
   const keys = await env.ext.evaluate(async () => Object.keys(await chrome.storage.local.get(null)).sort());
   console.log(`[canary] chrome.storage.local: keys=${keys.join(",")} bytes=${dump.length}`);
   expect(dump.includes(CANARY)).toBe(false);
-  // 置いてあるのは設定、トークン入れ(暗号化)、保管庫の暗号文、版、同期日時だけ
-  expect(keys).toEqual(["lastSync", "settings", "tokenKdbx", "vaultCipher", "vaultVersion"]);
+  // 置いてあるのは設定、トークン入れ(暗号化)、保管庫の暗号文、版、同期日時、承認リスト(フェーズ5。承認したときだけ)だけ
+  expect(keys.filter((k) => k !== "approvals")).toEqual(["lastSync", "settings", "tokenKdbx", "vaultCipher", "vaultVersion"]);
+  // 承認リストの1件はオリジンと時刻だけ(項目名・ユーザー名・値は入らない)
+  const approvals = await env.ext.evaluate(async () => ((await chrome.storage.local.get("approvals")) as { approvals?: Record<string, unknown>[] }).approvals ?? []);
+  for (const a of approvals) expect(Object.keys(a).sort()).toEqual(["at", "origin"]);
 });
 
 test("IndexedDB(拡張のオリジンとテストのページのオリジン)に目印が無い", async ({ env }) => {
@@ -62,4 +65,19 @@ test("wrangler dev の標準出力と標準エラーに目印が無い", async (
   console.log(`[canary] wrangler output bytes: ${out.length}`);
   expect(out.length).toBeGreaterThan(0);
   expect(out.includes(CANARY)).toBe(false);
+});
+
+test("フェーズ5: コンソールに項目名・ユーザー名・値が出ない。つなぎの置き場と PWM_HOME の全ファイルに目印が無い", async ({ env }) => {
+  // 拡張のコンソール(service worker、承認画面、設定画面、テストのページ)。fill.spec.ts で使った項目名とユーザー名も出ていないこと
+  const names = ["App Login", "Other Login", "App Api Key", "app-user", "other-user", "key-id"];
+  const leaked = env.consoleLines.filter((l) => names.some((n) => l.includes(n)) || l.includes(CANARY));
+  console.log(`[canary] phase5 console lines: ${env.consoleLines.length}, leaked: ${leaked.length}`);
+  expect(leaked).toEqual([]);
+  // つなぎの置き場(PWM_HOME の bridge フォルダ)と PWM_HOME の全ファイル。値のファイルは作られない
+  const { dirContainsBytes } = await import("./support.ts");
+  const hits = await dirContainsBytes(env.native.home, [Buffer.from(CANARY), Buffer.from(["CANARY", "AUTOM", ""].join("-"))]);
+  console.log(`[canary] PWM_HOME (bridge) files with a marker: ${hits.length}`);
+  expect(hits).toEqual([]);
+  const files = await (await import("./nativeHost.ts")).bridgeFiles(env.native.home);
+  expect(files.filter((n) => /^(req|res)-/.test(n))).toEqual([]);
 });

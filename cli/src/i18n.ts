@@ -163,6 +163,7 @@ const messages = {
     en: () => "An item with this title already exists in the automation vault. Use read_credential instead; no approval is needed.",
     ja: () => "この項目名は自動処理用の保管庫にあります。read_credential を使ってください(承認は要りません)。",
   },
+  badUrlArg: { en: () => "The url is too long.", ja: () => "url が長すぎます。" },
   mcpBadCommand: { en: () => "command must be a non-empty array of strings.", ja: () => "command は空でない文字列の配列にしてください。" },
 } as const;
 

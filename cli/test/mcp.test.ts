@@ -50,12 +50,12 @@ const textOf = (r: unknown): string => (r as Text).content.map((c) => c.text).jo
 const call = (c: Client, name: string, args: Record<string, unknown> = {}) => c.callTool({ name, arguments: args });
 
 describe("9. MCP: ツールの一覧と応答", () => {
-  it("ツールの一覧がちょうど list_titles、read_credential、run、audit、request_credential の5つ(5-2 で request_fill が加わる。audit の中身は mcpAudit.test.ts)。それぞれが表のとおり返す", async () => {
+  it("ツールの一覧がちょうど list_titles、read_credential、run、audit、request_credential、request_fill の6つ(audit の中身は mcpAudit.test.ts)。それぞれが表のとおり返す", async () => {
     const h = await realHome();
     const m = await connect(h.dir);
     try {
       const tools = await m.client.listTools();
-      expect(tools.tools.map((t) => t.name).sort()).toEqual(["audit", "list_titles", "read_credential", "request_credential", "run"]);
+      expect(tools.tools.map((t) => t.name).sort()).toEqual(["audit", "list_titles", "read_credential", "request_credential", "request_fill", "run"]);
       // API キーは read_credential でなく run で渡す使い方を勧める(設計書 §11-2)
       const rc = tools.tools.find((t) => t.name === "read_credential")!;
       expect(rc.description).toContain("prefer the `run` tool");
@@ -289,7 +289,7 @@ describe("14. pwm-mcp が通信しない", () => {
     const h = await realHome();
     const m = await connect(h.dir, { execArgv: ["--import", BLOCK] });
     try {
-      expect((await m.client.listTools()).tools).toHaveLength(5);
+      expect((await m.client.listTools()).tools).toHaveLength(6);
       expect(JSON.parse(textOf(await call(m.client, "list_titles")))).toHaveLength(4);
       expect(JSON.parse(textOf(await call(m.client, "read_credential", { title: "web" }))).username).toBe("alice");
       const ran = JSON.parse(textOf(await call(m.client, "run", { command: [process.execPath, CHILD, "check", "K", SECRET], env: { K: "svc" } })));

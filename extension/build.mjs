@@ -1,5 +1,6 @@
 // 使い方: node build.mjs [--test]
 // 通常のビルドは漏洩チェックの送り先を https://api.pwnedpasswords.com に固定する。
+// Native Messaging のホストの名前は、通常のビルドは com.pwm.bridge、--test は com.pwm.bridge.test。
 // --test のときだけ、送り先を http://localhost:<ポート> に差し替え、テスト用に localhost への通信を許す。
 import { build } from "esbuild";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -19,6 +20,7 @@ const entries = {
   popup: "src/popup/popup.ts",
   options: "src/options/options.ts",
   offscreen: "src/offscreen/offscreen.ts",
+  approve: "src/approve/approve.ts",
 };
 
 await rm(dist, { recursive: true, force: true });
@@ -40,13 +42,14 @@ for (const [name, entry] of Object.entries(entries)) {
     define: {
       __TEST__: JSON.stringify(isTest),
       __BREACH_BASE__: JSON.stringify(breachBase),
+      __BRIDGE_HOST__: JSON.stringify(isTest ? "com.pwm.bridge.test" : "com.pwm.bridge"),
     },
     logLevel: "warning",
   });
 }
 
 // 静的ファイル(HTML、CSS、ロケール)
-for (const name of ["popup.html", "options.html", "offscreen.html", "style.css", "_locales"]) {
+for (const name of ["popup.html", "options.html", "offscreen.html", "approve.html", "style.css", "_locales"]) {
   const from = path.join(root, "static", name);
   if (existsSync(from)) await cp(from, path.join(dist, name), { recursive: true });
 }

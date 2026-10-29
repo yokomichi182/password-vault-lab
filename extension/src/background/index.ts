@@ -1,3 +1,4 @@
+import { addApproval, isApproved } from "../shared/approvals.ts";
 import { checkBreach } from "../shared/breach.ts";
 import { bytesToBase64 } from "../shared/base64.ts";
 import { CLIPBOARD_CLEAR_MS } from "../shared/constants.ts";
@@ -24,6 +25,9 @@ import {
   setSession,
 } from "../shared/storage.ts";
 import { performUnlock } from "../shared/unlock.ts";
+import { approvalDecision, approvalInfo, askApproval } from "./approval.ts";
+import { startBridge } from "./bridge.ts";
+import { handleFill as handleFillRequest, type FillDeps } from "./fill.ts";
 
 // ログに出してよいのは例外の型の名前と件数まで(実装指示 3-8)。値・URL・ユーザー名は出さない。
 const CLIP_ALARM = "clipboard-clear";
@@ -220,6 +224,76 @@ async function handleBreach(id: string): Promise<BreachResponse> {
   return checkBreach(item, __BREACH_BASE__);
 }
 
+/** 最後にフォーカスした通常の窓の、表示中のタブ。承認画面の窓(popup)は通常の窓ではないので、対象にならない。 */
+async function lastFocusedNormalTabId(): Promise<number | null> {
+  let win: chrome.windows.Window | undefined;
+  try {
+    win = await chrome.windows.getLastFocused({ windowTypes: ["normal"] });
+  } catch {
+    win = undefined;
+  }
+  if (!win || win.type !== "normal" || win.id === undefined) {
+    const all = await chrome.windows.getAll({ windowTypes: ["normal"] });
+    win = all.find((w) => w.focused) ?? all[0];
+  }
+  if (!win || win.id === undefined) return null;
+  const tabs = await chrome.tabs.query({ active: true, windowId: win.id });
+  const id = tabs[0]?.id;
+  return id === undefined ? null : id;
+}
+
+/** request_fill の入力。コンテンツスクリプトの入力の部品(見える欄だけ、最上位のフレームだけ)をそのまま使う。 */
+async function fillTab(tabId: number, origin: string, username: string, password: string): Promise<boolean> {
+  try {
+    const res = (await chrome.tabs.sendMessage(tabId, { type: "fill", expectedOrigin: origin, username, password }, { frameId: 0 })) as
+      | TabFillResponse
+      | undefined;
+    return res?.ok === true;
+  } catch {
+    return false;
+  }
+}
+
+const fillDeps: FillDeps = {
+  getSession: () => getSession(),
+  async getTarget() {
+    const tabId = await lastFocusedNormalTabId();
+    if (tabId === null) return null;
+    const origin = await tabOrigin(tabId);
+    return origin === null ? null : { tabId, origin };
+  },
+  isApproved,
+  addApproval: (origin) => addApproval(origin),
+  askApproval,
+  fillTab,
+};
+
+// Native Messaging のホスト pwm-bridge とのつなぎ。service worker が起きるたびに、つながっていなければつなぐ
+const RECONNECT_ALARM = "bridge-reconnect";
+const bridge = startBridge({
+  connect: () => {
+    const port = chrome.runtime.connectNative(__BRIDGE_HOST__);
+    port.onDisconnect.addListener(() => void chrome.runtime.lastError); // 理由を読んで、未確認のエラーをコンソールに出さない(理由は出さない)
+    return port;
+  },
+  handle: (req) => handleFillRequest(fillDeps, req),
+  schedule: (fn, ms) => {
+    setTimeout(fn, ms);
+    // service worker が止まっても、あとで起こしてつなぎ直す(alarm は 30 秒より短くできない)
+    void chrome.alarms.create(RECONNECT_ALARM, { when: Date.now() + Math.max(ms, 30_000) });
+  },
+});
+bridge.ensureConnected();
+chrome.runtime.onStartup.addListener(() => bridge.ensureConnected());
+chrome.runtime.onInstalled.addListener(() => bridge.ensureConnected());
+
+/** 承認画面のページからの要求。送り主がその窓のページのときだけ応じる。 */
+function handleApprove(message: { type: string; id?: unknown; approve?: unknown }, sender: chrome.runtime.MessageSender): unknown {
+  const windowId = sender.tab?.windowId;
+  if (message.type === "approve-info") return approvalInfo(message.id, windowId);
+  return { ok: approvalDecision(message.id, message.approve, windowId) };
+}
+
 async function handlePopup(req: PopupRequest): Promise<unknown> {
   switch (req.type) {
     case "state":
@@ -246,7 +320,9 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
   const msg = message as { type?: string; target?: string } | null;
   if (!msg || typeof msg.type !== "string" || msg.target === "offscreen") return false;
   let work: Promise<unknown>;
-  if (isExtensionPage(sender)) {
+  if (isExtensionPage(sender) && (msg.type === "approve-info" || msg.type === "approve-decision")) {
+    work = Promise.resolve(handleApprove(message as { type: string; id?: unknown; approve?: unknown }, sender));
+  } else if (isExtensionPage(sender)) {
     work = handlePopup(message as PopupRequest);
   } else if (msg.type === "candidate") {
     work = handleCandidate(sender);
@@ -263,6 +339,8 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === SESSION_ALARM) {
     void clearSession();
+  } else if (alarm.name === RECONNECT_ALARM) {
+    bridge.ensureConnected();
   } else if (alarm.name === CLIP_ALARM) {
     void (async () => {
       await ensureOffscreen();

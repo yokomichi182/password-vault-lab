@@ -73,5 +73,22 @@
   "onloadFill": { "message": "ページの読み込み時に自動で入力する" },
   "saveBehavior": { "message": "保存" },
   "savedBehavior": { "message": "保存しました。" },
-  "errSetupFirst": { "message": "先に同期先を設定してください。" }
+  "errSetupFirst": { "message": "先に同期先を設定してください。" },
+
+  "approveWindowTitle": {"message": "自動入力の承認"},
+  "approveHeading": {"message": "AI が、このサイトのログインを拡張に入力させようとしています。"},
+  "approveSite": {"message": "サイト"},
+  "approveItem": {"message": "項目名"},
+  "approveUser": {"message": "ユーザー名"},
+  "approveClient": {"message": "要求元"},
+  "approveSelfReported": {"message": "(自己申告)"},
+  "approveNote": {"message": "承認すると、このサイト(スキーム・ホスト・ポートが同じ)には、AI が頼むたびに確認なしで入力します。承認は設定画面で取り消せます。"},
+  "approveAllow": {"message": "承認して入力し、今後も入力する"},
+  "approveDeny": {"message": "拒否"},
+  "approvalsSection": {"message": "AI の入力を承認したサイト"},
+  "approvalsHint": {"message": "AI が拡張に頼めば、確認なしでログインを入力するサイトです。ページ読み込み時の自動入力は、この一覧を見ません。"},
+  "approvalsEmpty": {"message": "承認したサイトはありません。"},
+  "approvalsRemove": {"message": "削除"},
+  "approvalsConfirm": {"message": "$ORIGIN$ を承認の一覧から削除しますか?", "placeholders": {"origin": {"content": "$1"}}},
+  "approvalsApprovedAt": {"message": "承認: $TIME$", "placeholders": {"time": {"content": "$1"}}}
 }

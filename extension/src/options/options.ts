@@ -1,3 +1,4 @@
+import { listApprovals, removeApproval } from "../shared/approvals.ts";
 import { bytesToBase64 } from "../shared/base64.ts";
 import {
   DEFAULT_VAULT_NAME,
@@ -63,6 +64,49 @@ function parseSyncUrl(raw: string): URL | null {
   }
   const ok = url.protocol === "https:" || (url.protocol === "http:" && url.hostname === "localhost");
   return ok ? url : null;
+}
+
+/** 承認リスト(request_fill が入力してよいオリジン)。一覧と、1件ずつの削除(確認つき)。オリジンと承認した時刻だけを出す。 */
+async function renderApprovals(set: HTMLElement): Promise<void> {
+  const list = await listApprovals();
+  const legend = document.createElement("legend");
+  legend.textContent = t("approvalsSection");
+  const hint = document.createElement("p");
+  hint.className = "hint";
+  hint.textContent = t("approvalsHint");
+  const box = document.createElement("div");
+  box.id = "approvals-list";
+  if (list.length === 0) {
+    const p = document.createElement("p");
+    p.className = "msg note";
+    p.id = "approvals-empty";
+    p.textContent = t("approvalsEmpty");
+    box.append(p);
+  }
+  for (const a of list) {
+    const row = document.createElement("div");
+    row.className = "approval-row";
+    const text = document.createElement("div");
+    const origin = document.createElement("div");
+    origin.className = "origin";
+    origin.textContent = a.origin;
+    const at = document.createElement("div");
+    at.className = "hint";
+    const d = new Date(a.at);
+    at.textContent = t("approvalsApprovedAt", Number.isNaN(d.getTime()) ? a.at : d.toLocaleString());
+    text.append(origin, at);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "approval-remove";
+    remove.textContent = t("approvalsRemove");
+    remove.addEventListener("click", () => {
+      if (!window.confirm(t("approvalsConfirm", a.origin))) return; // 削除のときに確認を出す
+      void removeApproval(a.origin).then(() => renderApprovals(set));
+    });
+    row.append(text, remove);
+    box.append(row);
+  }
+  set.replaceChildren(legend, hint, box);
 }
 
 async function render(): Promise<void> {
@@ -183,9 +227,13 @@ async function render(): Promise<void> {
     })();
   });
 
+  const apprSet = document.createElement("fieldset");
+  apprSet.id = "approvals";
+  void renderApprovals(apprSet);
+
   const title = document.createElement("h1");
   title.textContent = t("optionsTitle");
-  root.replaceChildren(title, syncSet, behSet);
+  root.replaceChildren(title, syncSet, behSet, apprSet);
 }
 
 void render();

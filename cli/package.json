@@ -4,11 +4,13 @@
   "type": "module",
   "bin": {
     "pwm": "dist/pwm.mjs",
-    "pwm-mcp": "dist/pwm-mcp.mjs"
+    "pwm-mcp": "dist/pwm-mcp.mjs",
+    "pwm-bridge": "dist/pwm-bridge.mjs"
   },
   "scripts": {
     "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
+    "bridge:manifest": "node bridge-manifest.mjs",
     "test": "node build.mjs && vitest run",
     "test:integration": "node build.mjs && vitest run --config vitest.integration.config.ts",
     "serve:check": "node build.mjs && node dist/serve-check.mjs",

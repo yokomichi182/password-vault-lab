@@ -5,7 +5,8 @@
   "version": "0.1.0",
   "default_locale": "en",
   "minimum_chrome_version": "120",
-  "permissions": ["storage", "alarms", "offscreen", "clipboardWrite"],
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEArG3V/YRfRXAghcFEWO9cR4n7ex/JVrEmFgTCInvnsTV+qUL9XEUvV5cAoignWjVcS7nyrep0ylc0TzSPGrQlmCy+b/Gr92HUf5Qi/OkJ6HuTfV8vUudonKsV6jCF5Eids/93rMY5r7SVvHUYudxk9AeCtSdJfvkSWR3ZVtf8mxlIbPDG5EulhkWs624/unML9r4Nwot8/Bh7zmxVhacMYp4qm0A5lsSRrzg0FHTUAZY0El9Fjui4fOTaHpFOQ87fw/VrRY408xMOD+EJPwCVc47B7/F96ZD2SNYE3O/nGq/nHTDe9R90P8PeRTtF4IrTUvHLkNa/HyE6NBsguEhD4QIDAQAB",
+  "permissions": ["storage", "alarms", "offscreen", "clipboardWrite", "nativeMessaging"],
   "host_permissions": ["https://api.pwnedpasswords.com/*"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*"],
   "background": {

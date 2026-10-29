@@ -7,6 +7,7 @@ import { z } from "zod";
 import { errorLabel } from "../../extension/src/shared/vault.ts";
 import { parseApproveOutput, sanitizeClientName, toToolPayload, type ApproveOutcome } from "./approve/protocol.ts";
 import { auditDeps, auditVault } from "./audit.ts";
+import { FILL_WAIT_MS, TITLE_MAX, URL_MAX, requestFill, type FillResult } from "./bridge/files.ts";
 import { withAutomationDb } from "./automation.ts";
 import { CliError, type Ctx } from "./ctx.ts";
 import { fieldText, findOne, liveEntries, parseRef, resolveRef, toCredential } from "./kdbx.ts";
@@ -47,6 +48,10 @@ class Capture {
 export interface McpDeps {
   /** 承認ダイアログの子のプロセス(pwm.mjs approve-credential)を動かし、標準出力の全体を返す。無いときは unavailable */
   approve?: (args: { title: string; client: string }) => Promise<string>;
+  /** Chrome 拡張への入力の依頼(pwm-bridge 経由)。無いときは <PWM_HOME>\bridge\ のファイルで本物を動かす。テストでは差し替える */
+  fill?: (args: { title: string; url?: string; client: string }) => Promise<FillResult>;
+  /** request_fill の待ち時間の上限(ミリ秒)。既定 60 秒。テストでは短くする */
+  fillTimeoutMs?: number;
 }
 
 export function createServer(ctx: Ctx, deps: McpDeps = {}): McpServer {
@@ -230,6 +235,38 @@ export function createServer(ctx: Ctx, deps: McpDeps = {}): McpServer {
         } finally {
           approving = false;
         }
+      }),
+  );
+
+  server.registerTool(
+    "request_fill",
+    {
+      description:
+        "Ask the Chrome extension to fill the login form of the tab the person is looking at, WITHOUT the value entering this conversation. " +
+        "The extension matches the item (exact title, login-type items only) against the ACTUAL origin of the tab, never against `url`. " +
+        "`url` is optional and only a safety check: if its origin differs from the real tab, nothing is filled and the result is not_found. " +
+        "If the origin has not been approved yet, the person is shown an approval window (up to 55 s). " +
+        "Returns only {\"result\": \"filled\" | \"denied\" | \"not_found\" | \"locked\" | \"unavailable\"} (no values). " +
+        "API-key items are never filled (not_found). locked: the extension is locked. unavailable: the extension or host is not reachable, or it timed out after 60 s.",
+      inputSchema: {
+        title: z.string().describe("Exact title of the item"),
+        url: z.string().optional().describe("Optional: the URL you expect the tab to be on (safety check only)"),
+      },
+    },
+    ({ title, url }) =>
+      guarded("request_fill", async () => {
+        if (title === "" || title.length > TITLE_MAX) return fail(msg(ctx.lang, "badTitle"));
+        if (url !== undefined && url.length > URL_MAX) return fail(msg(ctx.lang, "badUrlArg"));
+        const client = sanitizeClientName(server.server.getClientVersion()?.name);
+        const args = { title, ...(url !== undefined && url !== "" ? { url } : {}), client };
+        let result: FillResult;
+        try {
+          result = deps.fill ? await deps.fill(args) : await requestFill({ home: ctx.home, ...args, timeoutMs: deps.fillTimeoutMs ?? FILL_WAIT_MS });
+        } catch {
+          result = "unavailable";
+        }
+        ctx.err(`pwm-mcp: request_fill ${result}\n`); // 結果の種類だけ。項目名と URL は出さない
+        return ok({ result });
       }),
   );
 

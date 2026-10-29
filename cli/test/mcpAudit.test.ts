@@ -55,13 +55,13 @@ type Text = { content: { type: string; text: string }[]; isError?: boolean };
 const textOf = (r: unknown): string => (r as Text).content.map((c) => c.text).join("");
 
 describe("10. MCP の audit", () => {
-  it("ツールの一覧がちょうど5つ。audit は { pwned, clean, skipped, notApplicable } だけを返し、値・ハッシュ・ユーザー名・URL を返さない", async () => {
+  it("ツールの一覧がちょうど6つ。audit は { pwned, clean, skipped, notApplicable } だけを返し、値・ハッシュ・ユーザー名・URL を返さない", async () => {
     const h = await realHome();
     server.requests = [];
     const m = await connect(h.dir);
     try {
       const tools = await m.client.listTools();
-      expect(tools.tools.map((t) => t.name).sort()).toEqual(["audit", "list_titles", "read_credential", "request_credential", "run"]);
+      expect(tools.tools.map((t) => t.name).sort()).toEqual(["audit", "list_titles", "read_credential", "request_credential", "request_fill", "run"]);
       const audit = tools.tools.find((t) => t.name === "audit")!;
       // 手元の保管庫(前回の pwm sync の時点)についての結果であること、スキップは漏洩なしではないことを説明に書く
       expect(audit.description).toContain("last `pwm sync`");

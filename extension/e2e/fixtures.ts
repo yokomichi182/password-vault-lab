@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { chromium, expect, test as base, type BrowserContext, type Page } from "@playwright/test";
+import { registerNativeHost, type NativeHost } from "./nativeHost.ts";
 import {
   BreachMock,
   CANARY,
@@ -35,6 +36,8 @@ export interface Env {
   profileDir: string;
   breach: BreachMock;
   wrangler: Wrangler;
+  /** Native Messaging のホスト(テスト用の名前で登録したもの)と、その置き場(PWM_HOME) */
+  native: NativeHost;
   /** すべてのページ、service worker、拡張ページのコンソール出力(カナリアの探査用) */
   consoleLines: string[];
   /** 拡張のページ(設定画面)。chrome.* を呼ぶ検査はここで行う */
@@ -60,6 +63,8 @@ export const test = base.extend<object, { env: Env }>({
       const breach = new BreachMock();
       await breach.start();
       const wrangler = await startWrangler();
+      // フェーズ5: テスト用の名前のホストを、ブラウザを起動する前に登録する(終わりに必ず消す。fixture の finally)
+      const native = await registerNativeHost();
 
       const context = await chromium.launchPersistentContext(profileDir, {
         executablePath: chromiumPath(),
@@ -93,6 +98,7 @@ export const test = base.extend<object, { env: Env }>({
         profileDir,
         breach,
         wrangler,
+        native,
         consoleLines,
         ext,
         url: (host, port, p) => `http://${host}:${port}${p}`,
@@ -130,6 +136,9 @@ export const test = base.extend<object, { env: Env }>({
         await use(env);
       } finally {
         await context.close();
+        // つなぎの置き場(<PWM_HOME>)に目印が残っていないか(本体用と自動処理用の両方)。探してから、登録を消し、一時フォルダを消す
+        const bridgeHits = await dirContainsBytes(native.home, [Buffer.from(CANARY), Buffer.from(["CANARY", "AUTOM", ""].join("-"))]);
+        await native.dispose();
         // Chrome の一時プロファイル(作業フォルダの外)に本体用の目印が残っていないか
         const hits = await dirContainsBytes(profileDir, [Buffer.from(CANARY)]);
         await rm(profileDir, { recursive: true, force: true }).catch(() => undefined);
@@ -137,6 +146,7 @@ export const test = base.extend<object, { env: Env }>({
         for (const s of pageServers) await close(s as http.Server);
         const wranglerOut = wrangler.output();
         await wrangler.stop();
+        if (bridgeHits.length > 0) throw new Error(`canary found in the bridge folder: ${bridgeHits.length} file(s)`);
         if (hits.length > 0) throw new Error(`canary found in Chrome profile: ${hits.length} file(s)`);
         if (wranglerOut.includes(CANARY)) throw new Error("canary found in wrangler output");
       }
