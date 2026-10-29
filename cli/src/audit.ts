@@ -121,3 +121,19 @@ export function formatAudit(r: AuditResult, lang: Lang): string {
   if (r.skipped > 0) lines.push(msg(lang, "auditSkippedNote"));
   return lines.join("\n") + "\n";
 }
+
+/** 保存のあとの1回のチェック。保存は取り消さず、結果は標準エラーで知らせるだけ(設計書 §14-3)。例外は外に出さない。 */
+export async function checkAfterSave(ctx: Ctx, db: Kdbx, title: string): Promise<void> {
+  try {
+    const base = resolveBreachBase(ctx.environ);
+    const hits = liveEntries(db).filter((e) => fieldText(e.fields.get("Title")) === title);
+    if (hits.length !== 1) return;
+    const c = toCredential(hits[0]!);
+    const r = await checkBreach({ itemType: c.type, password: c.password }, base, ctx.fetch);
+    if (r.status === "pwned") ctx.err(msg(ctx.lang, "postSavePwned", { count: r.count }) + "\n");
+    else if (r.status === "error") ctx.err(msg(ctx.lang, "postSaveSkipped") + "\n");
+  } catch (e) {
+    if (e instanceof CliError) ctx.err(`pwm: ${e.text(ctx.lang)}\n`);
+    else ctx.err(msg(ctx.lang, "postSaveSkipped") + "\n");
+  }
+}

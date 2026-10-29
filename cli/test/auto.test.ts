@@ -43,7 +43,9 @@ function freshVault(): string {
 }
 
 const run = (home: string, argv: string[], opts: Parameters<typeof makeCtx>[1] = {}) => {
-  const t = makeCtx(home, { fetchImpl: fetch, ...opts });
+  // 保存のあとの漏洩チェックの先は、何も待ち受けていないローカルのポート(実 API には送らない。postsave.test.ts で中身を確かめる)
+  const environ = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, PWM_BREACH_URL: "http://127.0.0.1:9" };
+  const t = makeCtx(home, { fetchImpl: fetch, environ, ...opts });
   return runPwm(argv, t.ctx).then((code) => ({ code, out: t.stdout(), err: t.stderr(), asked: t.asked, ctx: t.ctx }));
 };
 

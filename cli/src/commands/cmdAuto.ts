@@ -3,6 +3,7 @@ import path from "node:path";
 import { ItemTypes, ENVIRONMENT_FIELD, ITEM_TYPE_FIELD } from "../../../extension/src/shared/constants.ts";
 import { fetchVault } from "../../../extension/src/shared/sync.ts";
 import { errorLabel } from "../../../extension/src/shared/vault.ts";
+import { checkAfterSave } from "../audit.ts";
 import { loadAutomationKey, loadAutomationToken, openFailure, withAutomationDb } from "../automation.ts";
 import { CliError, ENTROPY_AUTOMATION_KEY, ENTROPY_AUTOMATION_TOKEN, type Ctx } from "../ctx.ts";
 import {
@@ -101,7 +102,11 @@ export async function cmdAutoInit(ctx: Ctx, args: string[]): Promise<number> {
 
 // ---- 書き込み(最新の版に変更を当てて PUT。409 なら当て直す) ----
 
-async function mutate(ctx: Ctx, apply: (db: Kdbx) => void | Promise<void>): Promise<number> {
+async function mutate(
+  ctx: Ctx,
+  apply: (db: Kdbx) => void | Promise<void>,
+  afterSave?: (db: Kdbx) => Promise<void>,
+): Promise<number> {
   const cfg = await readConfig(ctx.home);
   if (!cfg.syncUrl) throw new CliError("noAutomation");
   const vault = cfg.automationVault ?? DEFAULT_AUTOMATION_VAULT;
@@ -126,6 +131,7 @@ async function mutate(ctx: Ctx, apply: (db: Kdbx) => void | Promise<void>): Prom
       if (put.kind === "ok") {
         await atomicWrite(path.join(ctx.home, FILES.automationKdbx), bytes);
         ctx.out(msg(ctx.lang, "saved") + "\n");
+        await afterSave?.(db); // 保存のあとの1回のチェック。結果を知らせるだけで、保存も終了コードも変えない
         return 0;
       }
       if (put.kind === "conflict") continue;
@@ -182,7 +188,7 @@ export async function cmdAutoAdd(ctx: Ctx, args: string[]): Promise<number> {
       e.times.expires = true;
       e.times.expiryTime = expires;
     }
-  });
+  }, type === ItemTypes.PASSWORD ? (db) => checkAfterSave(ctx, db, title) : undefined);
 }
 
 // ---- update ----
@@ -226,7 +232,7 @@ export async function cmdAutoUpdate(ctx: Ctx, args: string[]): Promise<number> {
     }
     if (value !== undefined) e.fields.set("Password", kdbxweb.ProtectedValue.fromString(value));
     e.times.update();
-  });
+  }, value !== undefined ? (db) => checkAfterSave(ctx, db, title) : undefined); // 種類が API キーの項目は、checkBreach が要求を送らない
 }
 
 // ---- remove ----

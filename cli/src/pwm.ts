@@ -8,6 +8,7 @@ import { CliError, type Ctx } from "./ctx.ts";
 import { windowsDpapi } from "./dpapi.ts";
 import { detectLang, msg } from "./i18n.ts";
 import { realSleep } from "./audit.ts";
+import { windowsToast } from "./notify.ts";
 import { cmdMainSetup } from "./main/mainVault.ts";
 import { ttyPrompter } from "./prompt.ts";
 import { pwmHome } from "./store.ts";
@@ -80,6 +81,7 @@ export function realCtx(): Ctx {
     environ,
     now: () => new Date(),
     sleep: realSleep,
+    notify: windowsToast,
   };
 }
 

@@ -77,6 +77,8 @@ export interface TestRun {
   asked: string[];
   /** sleep に渡された待ち時間(ミリ秒)。既定の sleep は待たずに記録するだけ */
   sleeps: number[];
+  /** notify(トースト)に渡された文言。既定の notify は記録するだけ */
+  notified: string[];
 }
 
 /** 入力を差し替えたコンテキスト。answers は聞かれた順の答え(null は Ctrl+C)。 */
@@ -90,6 +92,7 @@ export function makeCtx(
     lang?: "en" | "ja";
     environ?: Record<string, string | undefined>;
     sleep?: (ms: number) => Promise<void>;
+    notify?: (text: string) => Promise<void>;
   } = {},
 ): TestRun {
   const outChunks: Buffer[] = [];
@@ -97,6 +100,7 @@ export function makeCtx(
   const answers = [...(opts.answers ?? [])];
   const asked: string[] = [];
   const sleeps: number[] = [];
+  const notified: string[] = [];
   const ask = async (label: string) => {
     asked.push(label);
     return answers.length > 0 ? answers.shift()! : null;
@@ -115,8 +119,9 @@ export function makeCtx(
     environ: opts.environ ?? { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot },
     now: () => new Date(),
     sleep: opts.sleep ?? (async (ms) => void sleeps.push(ms)),
+    notify: opts.notify ?? (async (text) => void notified.push(text)),
   };
-  return { ctx, stdout: () => Buffer.concat(outChunks).toString("utf8"), stderr: () => Buffer.concat(errChunks).toString("utf8"), asked, sleeps };
+  return { ctx, stdout: () => Buffer.concat(outChunks).toString("utf8"), stderr: () => Buffer.concat(errChunks).toString("utf8"), asked, sleeps, notified };
 }
 
 // ---- 目印の探査 ----

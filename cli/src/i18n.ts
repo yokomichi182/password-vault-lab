@@ -139,6 +139,16 @@ const messages = {
     en: () => "Skipped items could not be checked (offline or no usable response). They are not confirmed clean.",
     ja: () => "スキップした項目は調べられていません(通信できない、または応答を読めない)。漏洩なしではありません。",
   },
+  auditNotifyText: {
+    en: (p: P) => `pwm: ${p.count} password(s) found in known breaches`,
+    ja: (p: P) => `pwm: ${p.count} 件のパスワードが漏洩済みです`,
+  },
+  auditNotifyFailed: { en: () => "Could not show the notification.", ja: () => "通知を出せませんでした。" },
+  postSavePwned: {
+    en: (p: P) => `This value has appeared in known breaches (${p.count} times). Use a different value.`,
+    ja: (p: P) => `この値は漏洩済みです(${p.count} 回)。別の値にしてください。`,
+  },
+  postSaveSkipped: { en: () => "Breach check skipped.", ja: () => "漏洩チェックをスキップしました。" },
   unexpected: { en: (p: P) => `Unexpected error (${p.label}).`, ja: (p: P) => `予期しないエラーです(${p.label})。` },
   mcpToolError: { en: (p: P) => `The tool failed (${p.label}).`, ja: (p: P) => `ツールが失敗しました(${p.label})。` },
   mcpBadTimeout: {

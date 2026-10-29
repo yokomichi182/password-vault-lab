@@ -6,7 +6,7 @@ import { withMainDb } from "../main/mainVault.ts";
 import { parseEnvSpec, runChild } from "../run.ts";
 import { parse, splitDashDash } from "./args.ts";
 
-function withSource<T>(ctx: Ctx, main: boolean, fn: (db: Kdbx) => Promise<T> | T): Promise<T> {
+export function withSource<T>(ctx: Ctx, main: boolean, fn: (db: Kdbx) => Promise<T> | T): Promise<T> {
   return main ? withMainDb(ctx, fn) : withAutomationDb(ctx, fn);
 }
 

@@ -43,6 +43,8 @@ export interface Ctx {
   now(): Date;
   /** 待つ(漏洩チェックの要求の間隔。テストでは差し替える) */
   sleep(ms: number): Promise<void>;
+  /** Windows のトースト通知(pwm audit --notify)。テストでは差し替える */
+  notify(text: string): Promise<void>;
 }
 
 export const ENTROPY_AUTOMATION_KEY = "pwm/automation-key";

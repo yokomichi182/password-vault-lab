@@ -24,6 +24,7 @@ function mcpCtx(): Ctx {
     environ,
     now: () => new Date(),
     sleep: realSleep,
+    notify: () => Promise.reject(new Error("pwm-mcp does not show notifications")),
   };
 }
 
