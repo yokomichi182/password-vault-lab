@@ -1,4 +1,4 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { ENTROPY_AUTOMATION_KEY } from "../src/ctx.ts";
@@ -150,6 +150,40 @@ describe("5. pwm auto init・add・update・remove", () => {
     expect(r.code).not.toBe(0);
     expect(await readdir(dir)).toEqual([]);
     expect(mock.vaults.get(vault)!.version).toBe(1);
+  });
+
+  it("init の文言(実装指示_フェーズ5 の 3-7): 手元にすでに保管庫とキーファイルがあるときは「すでに作ってある」。手元に無いときは「そのキーファイルが手元にない」。どちらも止まり方は同じ(終了コード 1、何も書かない)", async () => {
+    // 手元にある(2回目の init)
+    const { vault, home } = await seeded();
+    const before = (await readdir(home.dir)).sort();
+    const bytes = await readFile(path.join(home.dir, FILES.automationKdbx));
+    for (const lang of ["en", "ja"] as const) {
+      const r = await run(home.dir, ["auto", "init", "--sync-url", mock.url, "--vault", vault], { answers: [TOKEN], lang });
+      expect(r.code).toBe(1);
+      expect(r.err).toContain(lang === "en" ? "already set up on this PC" : "すでに作ってあります");
+      expect(r.err).not.toContain(lang === "en" ? "not on this PC" : "手元にないので");
+    }
+    expect((await readdir(home.dir)).sort()).toEqual(before);
+    expect(Buffer.from(await readFile(path.join(home.dir, FILES.automationKdbx))).equals(Buffer.from(bytes))).toBe(true);
+    expect(mock.vaults.get(vault)!.version).toBe(1);
+
+    // 手元に無い(別の PC で作った保管庫が同期先にある)
+    const vault2 = freshVault();
+    mock.setVault(vault2, new Uint8Array(await makeKdbx({ keyFile: await createKeyFile() }, [])));
+    const dir = await tmpHome();
+    const r2 = await run(dir, ["auto", "init", "--sync-url", mock.url, "--vault", vault2], { answers: [TOKEN] });
+    expect(r2.code).toBe(1);
+    expect(r2.err).toContain("not on this PC");
+    expect(r2.err).not.toContain("already set up");
+    expect(await readdir(dir)).toEqual([]);
+
+    // 保管庫のファイルだけ・キーファイルだけが手元にあるときは「手元に無い」側(どちらかが欠けていれば開けない)
+    const half = await tmpHome();
+    await writeFile(path.join(half, FILES.automationKdbx), bytes);
+    mock.tokens.set(TOKEN, vault);
+    const r3 = await run(half, ["auto", "init", "--sync-url", mock.url, "--vault", vault], { answers: [TOKEN] });
+    expect(r3.code).toBe(1);
+    expect(r3.err).toContain("not on this PC");
   });
 
   it("init: トークンが違う(401)・通信できないときも、ファイルを置かない", async () => {

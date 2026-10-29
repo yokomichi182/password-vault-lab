@@ -67,9 +67,15 @@ export async function cmdAutoInit(ctx: Ctx, args: string[]): Promise<number> {
   const token = await askHidden(ctx, "promptToken");
   if (token === "") throw new CliError("emptyInput");
 
-  // サーバーにすでに版があるときは作らない(そのキーファイルが手元にないので開けない)
+  // サーバーにすでに版があるときは作らない。文言は状況に合わせる:
+  // 手元にすでに保管庫とキーファイルがあるなら「すでに作ってある」。手元にないなら「そのキーファイルが手元にない」(実装指示_フェーズ5 の 3-7)
   const got = await fetchVault(syncUrl, vault, token, ctx.fetch);
-  if (got.kind === "ok") throw new CliError("serverHasVersion");
+  if (got.kind === "ok") {
+    const haveLocal =
+      (await readIfExists(path.join(ctx.home, FILES.automationKdbx))) !== null &&
+      (await readIfExists(path.join(ctx.home, FILES.automationKey))) !== null;
+    throw new CliError(haveLocal ? "alreadyInitialized" : "serverHasVersion");
+  }
   if (got.kind === "auth") throw new CliError("syncAuth");
   if (got.kind === "unreachable") throw new CliError("offlineNoWrite");
 
@@ -102,7 +108,7 @@ export async function cmdAutoInit(ctx: Ctx, args: string[]): Promise<number> {
 
 // ---- 書き込み(最新の版に変更を当てて PUT。409 なら当て直す) ----
 
-async function mutate(
+export async function mutate(
   ctx: Ctx,
   apply: (db: Kdbx) => void | Promise<void>,
   afterSave?: (db: Kdbx) => Promise<void>,

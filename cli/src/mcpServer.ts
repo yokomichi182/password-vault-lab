@@ -5,10 +5,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { z } from "zod";
 import { errorLabel } from "../../extension/src/shared/vault.ts";
+import { parseApproveOutput, sanitizeClientName, toToolPayload, type ApproveOutcome } from "./approve/protocol.ts";
 import { auditDeps, auditVault } from "./audit.ts";
 import { withAutomationDb } from "./automation.ts";
 import { CliError, type Ctx } from "./ctx.ts";
-import { findOne, liveEntries, parseRef, resolveRef, toCredential } from "./kdbx.ts";
+import { fieldText, findOne, liveEntries, parseRef, resolveRef, toCredential } from "./kdbx.ts";
 import { msg } from "./i18n.ts";
 import { ENV_NAME_RE, runChild } from "./run.ts";
 
@@ -42,8 +43,16 @@ class Capture {
   }
 }
 
-export function createServer(ctx: Ctx): McpServer {
+/** MCP サーバーの外とのつながり(入口で本物を渡し、テストでは差し替える)。 */
+export interface McpDeps {
+  /** 承認ダイアログの子のプロセス(pwm.mjs approve-credential)を動かし、標準出力の全体を返す。無いときは unavailable */
+  approve?: (args: { title: string; client: string }) => Promise<string>;
+}
+
+export function createServer(ctx: Ctx, deps: McpDeps = {}): McpServer {
   const server = new McpServer({ name: "pwm-mcp", version: "0.1.0" });
+  /** 同時に出すダイアログは1つまで */
+  let approving = false;
 
   /** 例外を、値を含まない応答にする。標準エラーには例外の型の名前までを出す。 */
   const guarded = (tool: string, fn: () => Promise<ToolResult>): Promise<ToolResult> =>
@@ -179,11 +188,56 @@ export function createServer(ctx: Ctx): McpServer {
       }),
   );
 
+  server.registerTool(
+    "request_credential",
+    {
+      description:
+        "Ask the person at the PC to approve handing you ONE item from their MAIN vault. Use it only when the item is not in the automation vault " +
+        "(if it is, this tool refuses and tells you to use read_credential). A dialog appears on the PC asking for their master password and approval; " +
+        "they can return the value once, or copy it into the automation vault and then return it. " +
+        "Returns the same fields as read_credential plus returnedOnce and copied (and copyFailure / breach when relevant), or {\"result\": \"denied\" | \"not_found\" | \"busy\" | \"unavailable\"} with no value. " +
+        "'denied' covers refusal, timeout (120 s), closing the dialog and a wrong master password; do not retry in a loop. " +
+        "WARNING: a returned secret stays in this conversation's record.",
+      inputSchema: { title: z.string().describe("Exact title of the item in the main vault") },
+    },
+    ({ title }) =>
+      guarded("request_credential", async () => {
+        if (title === "") return fail(msg(ctx.lang, "badTitle"));
+        if (approving) {
+          ctx.err("pwm-mcp: request_credential busy\n");
+          return ok({ result: "busy" });
+        }
+        approving = true;
+        try {
+          // 自動処理用の保管庫に同じ項目名があれば、ダイアログを出さずに read_credential を勧める
+          const inAutomation = await withAutomationDb(ctx, (db) => liveEntries(db).some((e) => fieldText(e.fields.get("Title")) === title)).catch(
+            (e: unknown) => {
+              if (e instanceof CliError && e.key === "noAutomation") return false;
+              throw e;
+            },
+          );
+          if (inAutomation) return fail(msg(ctx.lang, "mcpUseReadCredential"));
+
+          const client = sanitizeClientName(server.server.getClientVersion()?.name);
+          let outcome: ApproveOutcome;
+          try {
+            outcome = deps.approve ? parseApproveOutput(await deps.approve({ title, client })) : { result: "unavailable" };
+          } catch {
+            outcome = { result: "unavailable" };
+          }
+          ctx.err(`pwm-mcp: request_credential ${outcome.result}\n`); // 結果の種類だけ。項目名と値は出さない
+          return ok(toToolPayload(outcome));
+        } finally {
+          approving = false;
+        }
+      }),
+  );
+
   return server;
 }
 
-export async function serve(ctx: Ctx, transport: Transport): Promise<McpServer> {
-  const server = createServer(ctx);
+export async function serve(ctx: Ctx, transport: Transport, deps: McpDeps = {}): Promise<McpServer> {
+  const server = createServer(ctx, deps);
   await server.connect(transport);
   return server;
 }

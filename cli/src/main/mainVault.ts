@@ -132,3 +132,36 @@ export async function withMainDb<T>(ctx: Ctx, fn: (db: Kdbx) => Promise<T> | T):
   }
   return fn(db);
 }
+
+/** 本体の保管庫の設定(トークン入れと同期先)があるか。承認ダイアログを出す前の確認。 */
+export async function hasMainSetup(ctx: Ctx): Promise<boolean> {
+  const tokenBytes = await readIfExists(path.join(ctx.home, MAIN_FILES.tokenKdbx));
+  const cfg = await readConfig(ctx.home);
+  return Boolean(tokenBytes && cfg.syncUrl);
+}
+
+export type MainOpen = { kind: "ok"; db: Kdbx } | { kind: "denied" } | { kind: "unavailable" };
+
+/**
+ * 承認ダイアログの子のプロセスが、本体の保管庫を開く(request_credential)。マスターパスワードは引数で受け取り、ほかに持たない。
+ * `--main` と違い、通信できないときに前回の写しでは開かず(unavailable)、main.kdbx も書き換えない。
+ * マスターパスワードの誤りと、保管庫が開けないことは区別せず denied にする(誤りであることを AI に伝えない)。
+ */
+export async function openMainWithMaster(ctx: Ctx, master: string): Promise<MainOpen> {
+  const tokenBytes = await readIfExists(path.join(ctx.home, MAIN_FILES.tokenKdbx));
+  const cfg = await readConfig(ctx.home);
+  if (!tokenBytes || !cfg.syncUrl) return { kind: "unavailable" };
+  let token: string;
+  try {
+    token = await openTokenVault(tokenBytes, master);
+  } catch {
+    return { kind: "denied" };
+  }
+  const got = await fetchVault(cfg.syncUrl, cfg.mainVault ?? DEFAULT_MAIN_VAULT, token, ctx.fetch);
+  if (got.kind !== "ok") return { kind: "unavailable" };
+  try {
+    return { kind: "ok", db: await openWithPassword(got.bytes, master) };
+  } catch {
+    return { kind: "denied" };
+  }
+}

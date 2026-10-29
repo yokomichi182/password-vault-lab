@@ -50,12 +50,12 @@ const textOf = (r: unknown): string => (r as Text).content.map((c) => c.text).jo
 const call = (c: Client, name: string, args: Record<string, unknown> = {}) => c.callTool({ name, arguments: args });
 
 describe("9. MCP: ツールの一覧と応答", () => {
-  it("ツールの一覧がちょうど list_titles、read_credential、run、audit の4つ(audit の中身は mcpAudit.test.ts)。それぞれが表のとおり返す", async () => {
+  it("ツールの一覧がちょうど list_titles、read_credential、run、audit、request_credential の5つ(5-2 で request_fill が加わる。audit の中身は mcpAudit.test.ts)。それぞれが表のとおり返す", async () => {
     const h = await realHome();
     const m = await connect(h.dir);
     try {
       const tools = await m.client.listTools();
-      expect(tools.tools.map((t) => t.name).sort()).toEqual(["audit", "list_titles", "read_credential", "run"]);
+      expect(tools.tools.map((t) => t.name).sort()).toEqual(["audit", "list_titles", "read_credential", "request_credential", "run"]);
       // API キーは read_credential でなく run で渡す使い方を勧める(設計書 §11-2)
       const rc = tools.tools.find((t) => t.name === "read_credential")!;
       expect(rc.description).toContain("prefer the `run` tool");
@@ -225,6 +225,27 @@ describe("13. 束ねた pwm-mcp.mjs に本体の入口が入っていない", ()
       expect(mcp.includes(needle), `mcp has ${needle}`).toBe(false);
       expect(pwm.includes(needle), `pwm has ${needle}`).toBe(true); // 検査が空振りでないことの確認
     }
+    // フェーズ5: 承認ダイアログと、本体の保管庫を開くモジュール(approve-credential の子のプロセス)も pwm.mjs にだけ入る
+    for (const needle of ["System.Windows.Forms", "approve.lock", "openMainWithMaster", "hasMainSetup", "windowsApprovalDialog", "addCopy"]) {
+      expect(mcp.includes(needle), `mcp has ${needle}`).toBe(false);
+      expect(pwm.includes(needle), `pwm has ${needle}`).toBe(true);
+    }
+    // pwm-mcp は子のプロセスを起動するだけ(子の引数は項目名と AI の名前だけ)
+    expect(mcp).toContain('"approve-credential"');
+  });
+
+  it("通常のビルド(dist/)には、ダイアログを台本に差し替える口(テスト用のビルドだけ)が入っていない。dist/test/ には入っている", async () => {
+    const TEST_DIR = path.join(ROOT, "dist", "test");
+    for (const name of ["pwm.mjs", "pwm-mcp.mjs"]) {
+      const release = await readFile(path.join(ROOT, "dist", name), "utf8");
+      expect(release.includes("PWM_TEST_"), `release ${name}`).toBe(false);
+      expect(release.includes("scriptedDialog"), `release ${name}`).toBe(false);
+    }
+    const testPwm = await readFile(path.join(TEST_DIR, "pwm.mjs"), "utf8");
+    expect(testPwm.includes("PWM_TEST_DIALOG_FILE")).toBe(true);
+    // テスト用の pwm-mcp は、同じフォルダ(dist/test/)の pwm.mjs を子に使う
+    const testMcp = await readFile(path.join(TEST_DIR, "pwm-mcp.mjs"), "utf8");
+    expect(testMcp.includes("PWM_TEST_DIALOG_FILE")).toBe(false);
   });
 });
 
@@ -268,7 +289,7 @@ describe("14. pwm-mcp が通信しない", () => {
     const h = await realHome();
     const m = await connect(h.dir, { execArgv: ["--import", BLOCK] });
     try {
-      expect((await m.client.listTools()).tools).toHaveLength(4);
+      expect((await m.client.listTools()).tools).toHaveLength(5);
       expect(JSON.parse(textOf(await call(m.client, "list_titles")))).toHaveLength(4);
       expect(JSON.parse(textOf(await call(m.client, "read_credential", { title: "web" }))).username).toBe("alice");
       const ran = JSON.parse(textOf(await call(m.client, "run", { command: [process.execPath, CHILD, "check", "K", SECRET], env: { K: "svc" } })));

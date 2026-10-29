@@ -9,6 +9,8 @@ import { windowsDpapi } from "./dpapi.ts";
 import { detectLang, msg } from "./i18n.ts";
 import { realSleep } from "./audit.ts";
 import { windowsToast } from "./notify.ts";
+import { cmdApproveCredential } from "./main/approve.ts";
+import { windowsApprovalDialog, type ApprovalDialog } from "./main/approveDialog.ts";
 import { cmdMainSetup } from "./main/mainVault.ts";
 import { ttyPrompter } from "./prompt.ts";
 import { pwmHome } from "./store.ts";
@@ -25,10 +27,29 @@ const USAGE = `pwm - CLI for the automation vault (and read-only access to the m
   pwm read [--main] [--no-newline] TITLE[/FIELD]
   pwm audit [--main] [--notify]
   pwm run [--main] --env NAME=TITLE[/FIELD] [--env ...] [--timeout SECONDS] -- COMMAND [ARGS...]
+  pwm approve-credential --title T [--client NAME]   (used by pwm-mcp request_credential; always shows the approval dialog)
 `;
 
+/** 差し替えられる外とのつながり(テスト用)。 */
+export interface PwmDeps {
+  dialog: ApprovalDialog;
+}
+
+async function defaultDialog(): Promise<ApprovalDialog> {
+  // テスト用のビルド(dist/test/)でだけ、台本のファイルに従うダイアログに差し替えられる。
+  // 通常のビルドでは __PWM_TEST_DIALOG_ENV__ が空の文字列になり、この枝は動かず、差し替えのモジュールも束に入らない
+  if (__PWM_TEST_DIALOG_ENV__ !== "") {
+    const file = process.env[__PWM_TEST_DIALOG_ENV__];
+    if (file) {
+      const m = await import("./main/scriptedDialog.ts");
+      return m.default(file);
+    }
+  }
+  return windowsApprovalDialog;
+}
+
 /** コマンドを実行して終了コードを返す。失敗は値を含まない文言にして標準エラーに出す。 */
-export async function runPwm(argv: string[], ctx: Ctx): Promise<number> {
+export async function runPwm(argv: string[], ctx: Ctx, deps?: PwmDeps): Promise<number> {
   try {
     const [cmd, ...rest] = argv;
     switch (cmd) {
@@ -52,6 +73,8 @@ export async function runPwm(argv: string[], ctx: Ctx): Promise<number> {
         return await cmdAudit(ctx, rest);
       case "run":
         return await cmdRun(ctx, rest);
+      case "approve-credential":
+        return await cmdApproveCredential(ctx, rest, { dialog: deps?.dialog ?? (await defaultDialog()) });
       default:
         break;
     }

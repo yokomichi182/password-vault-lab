@@ -96,6 +96,10 @@ const messages = {
     en: () => "The sync server already has a version of this vault. Its key file is not on this PC, so it cannot be opened. Nothing was created.",
     ja: () => "同期先にはすでにこの保管庫の版があります。そのキーファイルは手元にないので開けません。何も作っていません。",
   },
+  alreadyInitialized: {
+    en: () => "The automation vault is already set up on this PC. Nothing was created or changed.",
+    ja: () => "自動処理用の保管庫は、この PC にすでに作ってあります。何も作らず、何も変えていません。",
+  },
   saved: { en: () => "Saved.", ja: () => "保存しました。" },
   created: { en: () => "Created the automation vault.", ja: () => "自動処理用の保管庫を作りました。" },
   duplicateTitle: {
@@ -154,6 +158,10 @@ const messages = {
   mcpBadTimeout: {
     en: (p: P) => `timeout_seconds must be between 1 and ${p.max}.`,
     ja: (p: P) => `timeout_seconds は 1 から ${p.max} の間にしてください。`,
+  },
+  mcpUseReadCredential: {
+    en: () => "An item with this title already exists in the automation vault. Use read_credential instead; no approval is needed.",
+    ja: () => "この項目名は自動処理用の保管庫にあります。read_credential を使ってください(承認は要りません)。",
   },
   mcpBadCommand: { en: () => "command must be a non-empty array of strings.", ja: () => "command は空でない文字列の配列にしてください。" },
 } as const;

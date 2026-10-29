@@ -1,7 +1,9 @@
 // pwm-mcp の入口(stdio)。標準出力は MCP の通信だけに使い、ログは標準エラーに出す。
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { spawn } from "node:child_process";
 import { realpathSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { windowsDpapi } from "./dpapi.ts";
 import type { Ctx } from "./ctx.ts";
 import { BREACH_BASE_URL, realSleep, resolveBreachBase, restrictToBreachRange } from "./audit.ts";
@@ -40,9 +42,45 @@ function mcpCtx(): Ctx {
   };
 }
 
+/** 承認ダイアログを出す子のプロセス(同じ dist の pwm.mjs approve-credential)を動かして、標準出力を返す。標準エラーは捨てる。 */
+const APPROVE_WAIT_MS = 150_000;
+function spawnApprove(args: { title: string; client: string }): Promise<string> {
+  const script = path.join(path.dirname(fileURLToPath(import.meta.url)), "pwm.mjs");
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawn(process.execPath, [script, "approve-credential", "--title", args.title, "--client", args.client], {
+        stdio: ["ignore", "pipe", "ignore"],
+        windowsHide: true,
+        shell: false,
+      });
+    } catch {
+      resolve("");
+      return;
+    }
+    const chunks: Buffer[] = [];
+    let size = 0;
+    child.stdout.on("data", (d: Buffer) => {
+      if (size < 64 * 1024) {
+        chunks.push(d);
+        size += d.length;
+      }
+    });
+    const timer = setTimeout(() => child.kill(), APPROVE_WAIT_MS);
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve("");
+    });
+    child.on("close", () => {
+      clearTimeout(timer);
+      resolve(Buffer.concat(chunks).toString("utf8"));
+    });
+  });
+}
+
 const entry = process.argv[1];
 if (entry && import.meta.url === pathToFileURL(realpathSync(entry)).href) {
-  serve(mcpCtx(), new StdioServerTransport()).catch(() => {
+  serve(mcpCtx(), new StdioServerTransport(), { approve: spawnApprove }).catch(() => {
     process.stderr.write("pwm-mcp: failed to start\n");
     process.exitCode = 1;
   });
