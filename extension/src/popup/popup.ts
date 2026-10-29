@@ -45,6 +45,8 @@ function errorText(code: string): string {
   switch (code) {
     case "wrong-master":
       return t("errWrongMaster");
+    case "open-failed":
+      return t("errOpenFailed");
     case "empty":
       return t("errEmpty");
     case "vault-unopenable":

@@ -1,5 +1,5 @@
 {
-  "extName": { "message": "PW Vault" },
+  "extName": { "message": "Tobari" },
   "extDescription": { "message": "Autofill from your own sync server. Read-only." },
 
   "notConfigured": { "message": "Set up the sync server in Settings first." },
@@ -35,6 +35,7 @@
   "errUnreachable": { "message": "Cannot reach the sync server." },
   "errAuth": { "message": "The sync server did not accept the token." },
   "errNotConfigured": { "message": "Set up the sync server in Settings first." },
+  "errOpenFailed": { "message": "Could not open the vault. Please try again." },
   "errUnknown": { "message": "Something went wrong." },
   "cacheNote": {
     "message": "Could not sync. Using the saved copy. Last sync: $TIME$",
@@ -49,7 +50,7 @@
   "allItems": { "message": "All items" },
   "noItems": { "message": "No items." },
 
-  "optionsTitle": { "message": "PW Vault settings" },
+  "optionsTitle": { "message": "Tobari settings" },
   "syncSection": { "message": "Sync server" },
   "syncUrl": { "message": "Sync server URL" },
   "syncUrlHint": { "message": "https://..., or http://localhost for testing. Only this origin is requested as a permission." },
@@ -66,7 +67,7 @@
   "errPermission": { "message": "Permission to reach the sync server was not granted." },
   "saving": { "message": "Checking..." },
   "savedSync": { "message": "Saved. The vault opened with this master password." },
-  "behaviorSection": { "message": "Behavior" },
+  "behaviorSection": { "message": "Lock and autofill" },
   "sessionHours": { "message": "Session length (hours, 1 to 24)" },
   "sessionHoursHint": { "message": "Applies from the next unlock." },
   "onloadFill": { "message": "Fill automatically when a page loads" },

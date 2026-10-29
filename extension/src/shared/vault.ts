@@ -28,6 +28,27 @@ export function setupArgon2(): void {
   argon2Ready = true;
 }
 
+/** テスト用: Argon2 の実装を差し替えたあとに、元へ戻すために印を下ろす。 */
+export function resetArgon2(): void {
+  argon2Ready = false;
+}
+
+/** kdbxweb が鍵の誤り(マスターパスワードが違う)として出した例外か。それ以外の失敗とは分けて扱う。 */
+export function isInvalidKeyError(e: unknown): boolean {
+  if (typeof e !== "object" || e === null) return false;
+  const x = e as { name?: unknown; code?: unknown };
+  return x.name === "KdbxError" && x.code === kdbxweb.Consts.ErrorCodes.InvalidKey;
+}
+
+/** ログに出してよい例外の表記。型の名前と(あれば)kdbxweb のエラーコードだけ。メッセージは含めない。 */
+export function errorLabel(e: unknown): string {
+  if (e instanceof Error) {
+    const code = (e as { code?: unknown }).code;
+    return typeof code === "string" && /^[A-Za-z0-9]{1,40}$/.test(code) ? `${e.name}/${code}` : e.name;
+  }
+  return typeof e;
+}
+
 /** セッションに置く、写した1項目。 */
 export interface VaultItem {
   id: string;

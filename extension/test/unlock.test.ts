@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { bytesToBase64 } from "../src/shared/base64.ts";
 import { fetchVault } from "../src/shared/sync.ts";
 import { performUnlock, type LocalState } from "../src/shared/unlock.ts";
-import { createTokenVault } from "../src/shared/vault.ts";
+import * as kdbxwebNs from "kdbxweb";
+import { createTokenVault, resetArgon2, setupArgon2 } from "../src/shared/vault.ts";
 import { CANARY } from "./canary.ts";
 import { MASTER, makeKdbx } from "./helpers.ts";
 
@@ -116,6 +117,55 @@ describe("保管庫の取得とロック解除", () => {
     const { impl } = serverFetch(() => vaultResponse(other, 9));
     const r = await performUnlock(MASTER, local, impl);
     expect(r).toEqual({ ok: false, error: "vault-unopenable" });
+  });
+});
+
+describe("解除の失敗の分け方", () => {
+  const kdbxweb = ((kdbxwebNs as unknown as { default?: typeof kdbxwebNs }).default ?? kdbxwebNs) as typeof kdbxwebNs;
+  // 署名・ヘッダーの形が崩れた、読み取れないバイト列にする(本文だけを書き換えると HMAC の不一致で鍵の誤りと区別できない)
+  const broken = (b: Uint8Array) => b.slice(0, 40);
+  const noMarker = (r: unknown, errors: unknown[]) => {
+    expect(JSON.stringify(r)).not.toContain(CANARY);
+    for (const e of errors) expect(String((e as Error)?.message ?? e)).not.toContain(CANARY);
+  };
+
+  it("正しい KDBX に誤ったマスターパスワード: wrong-master", async () => {
+    const r = await performUnlock("another-master", await baseLocal(), serverFetch(() => new Response("x", { status: 500 })).impl);
+    expect(r).toEqual({ ok: false, error: "wrong-master" });
+    noMarker(r, []);
+  });
+
+  it("壊したバイト列(トークン入れ): open-failed", async () => {
+    const tokenBytes = broken(await createTokenVault(MASTER, TOKEN));
+    const local = await baseLocal({ tokenKdbx: bytesToBase64(tokenBytes) });
+    const r = await performUnlock(MASTER, local, serverFetch(() => new Response("x", { status: 500 })).impl);
+    expect(r).toEqual({ ok: false, error: "open-failed" });
+    noMarker(r, []);
+  });
+
+  it("壊したバイト列(サーバーの保管庫): open-failed。手元の暗号文は返さない", async () => {
+    const vault = broken(await makeKdbx(MASTER, [{ title: "a", password: `${CANARY}-a` }]));
+    const { impl } = serverFetch(() => vaultResponse(vault, 4));
+    const r = await performUnlock(MASTER, await baseLocal(), impl);
+    expect(r).toEqual({ ok: false, error: "open-failed" });
+    noMarker(r, []);
+  });
+
+  it("Argon2 の実装が例外を投げる: open-failed。メッセージに目印は入らない", async () => {
+    const local = await baseLocal();
+    const thrown = new Error("wasm failure");
+    try {
+      setupArgon2();
+      kdbxweb.CryptoEngine.setArgon2Impl(async () => {
+        throw thrown;
+      });
+      const r = await performUnlock(MASTER, local, serverFetch(() => new Response("x", { status: 500 })).impl);
+      expect(r).toEqual({ ok: false, error: "open-failed" });
+      noMarker(r, [thrown]);
+    } finally {
+      resetArgon2();
+      setupArgon2();
+    }
   });
 });
 

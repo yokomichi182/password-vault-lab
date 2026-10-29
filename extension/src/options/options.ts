@@ -9,7 +9,7 @@ import { t } from "../shared/i18n.ts";
 import { clampHours, clearSession, defaultSettings, getSettings } from "../shared/storage.ts";
 import { fetchVault } from "../shared/sync.ts";
 import { createTokenVault } from "../shared/vault.ts";
-import { openVaultItems } from "../shared/vault.ts";
+import { errorLabel, isInvalidKeyError, openVaultItems } from "../shared/vault.ts";
 
 // 設定画面: 同期先、保管庫の名前、トークン(マスターパスワードで鍵をかけて保存)、セッションの長さ、オンロードのオンとオフ。
 // 値(トークン、マスターパスワード)は画面から読んだらすぐ欄を空にし、ログにもメッセージにも出さない。
@@ -121,8 +121,10 @@ async function render(): Promise<void> {
         if (outcome.kind === "unreachable") return show(syncMsg, "error", t("errUnreachable"));
         try {
           await openVaultItems(outcome.bytes, masterValue);
-        } catch {
-          return show(syncMsg, "error", t("errVaultUnopenable"));
+        } catch (e) {
+          if (isInvalidKeyError(e)) return show(syncMsg, "error", t("errVaultUnopenable"));
+          console.error("open failed", errorLabel(e));
+          return show(syncMsg, "error", t("errOpenFailed"));
         }
         const settings = { ...current, syncUrl: parsed.origin, vaultName };
         await chrome.storage.local.set({

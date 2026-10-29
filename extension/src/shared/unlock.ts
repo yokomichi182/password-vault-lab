@@ -1,6 +1,6 @@
 import { base64ToBytes } from "./base64.ts";
 import { fetchVault } from "./sync.ts";
-import { openTokenVault, openVaultItems, type VaultItem } from "./vault.ts";
+import { errorLabel, isInvalidKeyError, openTokenVault, openVaultItems, type VaultItem } from "./vault.ts";
 
 /** chrome.storage.local に置くもの。トークンはマスターパスワードで鍵をかけた KDBX の形でだけ置く。 */
 export interface Settings {
@@ -24,6 +24,7 @@ export interface LocalState {
 export type UnlockError =
   | "not-configured"
   | "wrong-master"
+  | "open-failed"
   | "empty"
   | "vault-unopenable"
   | "unreachable"
@@ -43,6 +44,13 @@ export type UnlockResult =
     }
   | { ok: false; error: UnlockError };
 
+/** 鍵の誤りと、それ以外の失敗を分ける。ログに出すのは例外の型の名前とコードだけ。 */
+function classify(e: unknown, keyError: UnlockError): UnlockError {
+  if (isInvalidKeyError(e)) return keyError;
+  console.error("open failed", errorLabel(e));
+  return "open-failed";
+}
+
 /**
  * 設計書 §4 の6 と実装指示 3-3 の流れ。
  * マスターパスワードとトークンはこの関数の中の変数にだけ置き、戻り値に入れない。
@@ -59,8 +67,8 @@ export async function performUnlock(
   let token: string;
   try {
     token = await openTokenVault(base64ToBytes(tokenKdbx), master);
-  } catch {
-    return { ok: false, error: "wrong-master" };
+  } catch (e) {
+    return { ok: false, error: classify(e, "wrong-master") };
   }
 
   const outcome = await fetchVault(settings.syncUrl, settings.vaultName, token, fetchImpl);
@@ -77,9 +85,9 @@ export async function performUnlock(
         source: "server",
         newCipher: { bytes: outcome.bytes, version: outcome.version, at: now().toISOString() },
       };
-    } catch {
+    } catch (e) {
       // サーバーの版が開けないときは、手元の暗号文を上書きしない(設計書 §4 の6)。解除もしない。
-      return { ok: false, error: "vault-unopenable" };
+      return { ok: false, error: classify(e, "vault-unopenable") };
     }
   }
 
@@ -94,7 +102,7 @@ export async function performUnlock(
       lastSync: local.lastSync,
       note: outcome.kind === "auth" ? "auth" : "offline",
     };
-  } catch {
-    return { ok: false, error: "vault-unopenable" };
+  } catch (e) {
+    return { ok: false, error: classify(e, "vault-unopenable") };
   }
 }

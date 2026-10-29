@@ -1,5 +1,5 @@
 {
-  "extName": { "message": "PW Vault" },
+  "extName": { "message": "Tobari" },
   "extDescription": { "message": "自分の同期先から自動入力します。読み取り専用です。" },
 
   "notConfigured": { "message": "先に設定画面で同期先を設定してください。" },
@@ -35,6 +35,7 @@
   "errUnreachable": { "message": "同期先に接続できません。" },
   "errAuth": { "message": "同期先がトークンを受け付けませんでした。" },
   "errNotConfigured": { "message": "先に設定画面で同期先を設定してください。" },
+  "errOpenFailed": { "message": "保管庫を開く処理に失敗しました。もう一度試してください。" },
   "errUnknown": { "message": "うまくいきませんでした。" },
   "cacheNote": {
     "message": "同期できないため、保存してあるコピーを使っています。前回の同期: $TIME$",
@@ -49,7 +50,7 @@
   "allItems": { "message": "すべての項目" },
   "noItems": { "message": "項目がありません。" },
 
-  "optionsTitle": { "message": "PW Vault の設定" },
+  "optionsTitle": { "message": "Tobari の設定" },
   "syncSection": { "message": "同期先" },
   "syncUrl": { "message": "同期先の URL" },
   "syncUrlHint": { "message": "https://... 、試すときは http://localhost。このオリジンだけを権限として求めます。" },
@@ -66,7 +67,7 @@
   "errPermission": { "message": "同期先への通信の権限が許可されませんでした。" },
   "saving": { "message": "確かめています..." },
   "savedSync": { "message": "保存しました。このマスターパスワードで保管庫が開きました。" },
-  "behaviorSection": { "message": "ふるまい" },
+  "behaviorSection": { "message": "ロックと自動入力" },
   "sessionHours": { "message": "セッションの長さ(時間、1〜24)" },
   "sessionHoursHint": { "message": "次の解除から変わります。" },
   "onloadFill": { "message": "ページの読み込み時に自動で入力する" },
