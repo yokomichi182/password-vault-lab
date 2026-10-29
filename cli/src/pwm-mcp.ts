@@ -4,6 +4,7 @@ import { realpathSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { windowsDpapi } from "./dpapi.ts";
 import type { Ctx } from "./ctx.ts";
+import { realSleep } from "./audit.ts";
 import { detectLang } from "./i18n.ts";
 import { serve } from "./mcpServer.ts";
 import { pwmHome } from "./store.ts";
@@ -22,6 +23,7 @@ function mcpCtx(): Ctx {
     err: (c) => void process.stderr.write(c),
     environ,
     now: () => new Date(),
+    sleep: realSleep,
   };
 }
 

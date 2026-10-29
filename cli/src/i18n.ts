@@ -126,6 +126,19 @@ const messages = {
   promptValue: { en: () => "Value: ", ja: () => "値: " },
   promptValueAgain: { en: () => "Value (again): ", ja: () => "値(もう一度): " },
   promptNotes: { en: () => "Notes: ", ja: () => "メモ: " },
+  badBreachUrl: {
+    en: () => "PWM_BREACH_URL must be http://127.0.0.1:PORT or http://localhost:PORT (no path). Nothing was sent.",
+    ja: () => "PWM_BREACH_URL は http://127.0.0.1:ポート か http://localhost:ポート(パスなし)にしてください。何も送っていません。",
+  },
+  auditPwnedHeader: { en: () => "Pwned:", ja: () => "漏洩済み:" },
+  auditSummary: {
+    en: (p: P) => `Checked: ${p.checked}  Pwned: ${p.pwned}  Clean: ${p.clean}  Skipped: ${p.skipped}  Not applicable: ${p.notApplicable}`,
+    ja: (p: P) => `確認: ${p.checked}  漏洩済み: ${p.pwned}  漏洩なし: ${p.clean}  スキップ: ${p.skipped}  対象外: ${p.notApplicable}`,
+  },
+  auditSkippedNote: {
+    en: () => "Skipped items could not be checked (offline or no usable response). They are not confirmed clean.",
+    ja: () => "スキップした項目は調べられていません(通信できない、または応答を読めない)。漏洩なしではありません。",
+  },
   unexpected: { en: (p: P) => `Unexpected error (${p.label}).`, ja: (p: P) => `予期しないエラーです(${p.label})。` },
   mcpToolError: { en: (p: P) => `The tool failed (${p.label}).`, ja: (p: P) => `ツールが失敗しました(${p.label})。` },
   mcpBadTimeout: {

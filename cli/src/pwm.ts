@@ -1,11 +1,13 @@
 import { pathToFileURL } from "node:url";
 import { realpathSync } from "node:fs";
 import { errorLabel } from "../../extension/src/shared/vault.ts";
+import { cmdAudit } from "./commands/cmdAudit.ts";
 import { cmdAutoAdd, cmdAutoInit, cmdAutoList, cmdAutoRemove, cmdAutoUpdate, cmdSync } from "./commands/cmdAuto.ts";
 import { cmdRead, cmdRun } from "./commands/cmdRead.ts";
 import { CliError, type Ctx } from "./ctx.ts";
 import { windowsDpapi } from "./dpapi.ts";
 import { detectLang, msg } from "./i18n.ts";
+import { realSleep } from "./audit.ts";
 import { cmdMainSetup } from "./main/mainVault.ts";
 import { ttyPrompter } from "./prompt.ts";
 import { pwmHome } from "./store.ts";
@@ -20,6 +22,7 @@ const USAGE = `pwm - CLI for the automation vault (and read-only access to the m
   pwm sync
   pwm main setup [--sync-url URL] [--vault NAME]
   pwm read [--main] [--no-newline] TITLE[/FIELD]
+  pwm audit [--main] [--notify]
   pwm run [--main] --env NAME=TITLE[/FIELD] [--env ...] [--timeout SECONDS] -- COMMAND [ARGS...]
 `;
 
@@ -44,6 +47,8 @@ export async function runPwm(argv: string[], ctx: Ctx): Promise<number> {
         break;
       case "read":
         return await cmdRead(ctx, rest);
+      case "audit":
+        return await cmdAudit(ctx, rest);
       case "run":
         return await cmdRun(ctx, rest);
       default:
@@ -74,6 +79,7 @@ export function realCtx(): Ctx {
     err: (c) => void process.stderr.write(c),
     environ,
     now: () => new Date(),
+    sleep: realSleep,
   };
 }
 

@@ -41,6 +41,8 @@ export interface Ctx {
   err(chunk: string | Uint8Array): void;
   environ: Record<string, string | undefined>;
   now(): Date;
+  /** 待つ(漏洩チェックの要求の間隔。テストでは差し替える) */
+  sleep(ms: number): Promise<void>;
 }
 
 export const ENTROPY_AUTOMATION_KEY = "pwm/automation-key";

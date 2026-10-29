@@ -163,6 +163,35 @@ describe("5. pwm auto init・add・update・remove", () => {
   });
 });
 
+describe("空のトークンを送らない(フェーズ3.5の PC での確認から)", () => {
+  it("auto init と main setup は、空のトークン(と空のマスターパスワード)で「入力が空です」と止まり、fetch を呼ばず、ファイルを置かない", async () => {
+    const dir = await tmpHome();
+    let calls = 0;
+    const spy: typeof fetch = () => {
+      calls += 1;
+      return Promise.reject(new Error("must not be called"));
+    };
+    const cases: { argv: string[]; answers: string[] }[] = [
+      { argv: ["auto", "init", "--sync-url", mock.url], answers: [""] },
+      { argv: ["main", "setup", "--sync-url", mock.url], answers: [""] },
+      { argv: ["main", "setup", "--sync-url", mock.url], answers: [TOKEN_MAIN, ""] },
+    ];
+    for (const c of cases) {
+      const t = makeCtx(dir, { fetchImpl: spy, answers: c.answers });
+      expect(await runPwm(c.argv, t.ctx), c.argv.join(" ")).toBe(1);
+      expect(t.stderr()).toContain("The input is empty");
+      expect(t.stdout()).toBe("");
+    }
+    expect(calls).toBe(0);
+    expect(await readdir(dir)).toEqual([]);
+    // 日本語
+    const ja = makeCtx(dir, { fetchImpl: spy, answers: [""], lang: "ja" });
+    expect(await runPwm(["auto", "init", "--sync-url", mock.url], ja.ctx)).toBe(1);
+    expect(ja.stderr()).toContain("入力が空です");
+    expect(calls).toBe(0);
+  });
+});
+
 describe("6. 書き込みの 409", () => {
   it("別の書き込みで版が進んでいても、変更を新しい版に当て直して通り、もう一方の変更も消えない", async () => {
     const { vault, home } = await seeded();
