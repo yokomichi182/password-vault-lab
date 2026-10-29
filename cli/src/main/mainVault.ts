@@ -6,7 +6,7 @@ import { createTokenVault, openTokenVault } from "../../../extension/src/shared/
 import { openFailure } from "../automation.ts";
 import { parse } from "../commands/args.ts";
 import { CliError, type Ctx } from "../ctx.ts";
-import { msg, type MsgKey } from "../i18n.ts";
+import { msg, type Lang } from "../i18n.ts";
 import { openWithPassword, type Kdbx } from "../kdbx.ts";
 import { DEFAULT_MAIN_VAULT, atomicWrite, checkVaultName, normalizeSyncUrl, readConfig, readIfExists, writeConfig } from "../store.ts";
 
@@ -15,8 +15,35 @@ const MAIN_FILES = {
   kdbx: "main.kdbx",
 } as const;
 
-async function ask(ctx: Ctx, key: MsgKey): Promise<string> {
-  const v = await ctx.prompt.hidden(msg(ctx.lang, key));
+// 本体の保管庫だけで使う文言は、pwm-mcp に入らないようここに置く(共有の i18n.ts には置かない)
+const MAIN_MESSAGES = {
+  promptToken: { en: "Sync token: ", ja: "同期トークン: " },
+  promptMaster: { en: "Master password: ", ja: "マスターパスワード: " },
+  noMain: {
+    en: "The main vault is not set up on this PC. Run `pwm main setup` first.",
+    ja: "本体の保管庫の設定がありません。先に `pwm main setup` を実行してください。",
+  },
+  noLastSync: {
+    en: "The sync server could not be reached and there is no saved copy.",
+    ja: "同期先に通信できず、保存した写しもありません。",
+  },
+} as const;
+const mainText = (lang: Lang, key: keyof typeof MAIN_MESSAGES): string => MAIN_MESSAGES[key][lang];
+
+/** 本体の保管庫だけの失敗。文言はこのモジュールの表から出す。 */
+class MainError extends CliError {
+  private readonly mainKey: keyof typeof MAIN_MESSAGES;
+  constructor(key: "noMain" | "noLastSync") {
+    super("unexpected", { label: key });
+    this.mainKey = key;
+  }
+  override text(lang: Lang): string {
+    return mainText(lang, this.mainKey);
+  }
+}
+
+async function ask(ctx: Ctx, key: "promptToken" | "promptMaster"): Promise<string> {
+  const v = await ctx.prompt.hidden(mainText(ctx.lang, key));
   if (v === null) throw new CliError("cancelled", {}, 130);
   return v;
 }
@@ -66,7 +93,7 @@ export async function withMainDb<T>(ctx: Ctx, fn: (db: Kdbx) => Promise<T> | T):
   if (!ctx.stdinIsTTY) throw new CliError("needTty");
   const tokenBytes = await readIfExists(path.join(ctx.home, MAIN_FILES.tokenKdbx));
   const cfg = await readConfig(ctx.home);
-  if (!tokenBytes || !cfg.syncUrl) throw new CliError("noMain");
+  if (!tokenBytes || !cfg.syncUrl) throw new MainError("noMain");
   const vault = cfg.mainVault ?? DEFAULT_MAIN_VAULT;
 
   const master = await ask(ctx, "promptMaster");
@@ -90,9 +117,13 @@ export async function withMainDb<T>(ctx: Ctx, fn: (db: Kdbx) => Promise<T> | T):
   } else {
     const file = path.join(ctx.home, MAIN_FILES.kdbx);
     const cached = await readIfExists(file);
-    if (!cached) throw new CliError("noLastSync");
+    if (!cached) throw new MainError("noLastSync");
     const at = (await stat(file)).mtime.toISOString();
-    ctx.err(msg(ctx.lang, "lastSync", { at }) + "\n");
+    ctx.err(
+      (ctx.lang === "ja"
+        ? `オフラインです。前回の同期の写しを使います(前回の同期: ${at})。`
+        : `Offline. Using the last synced copy (last sync: ${at}).`) + "\n",
+    );
     try {
       db = await openWithPassword(cached, master);
     } catch (e) {

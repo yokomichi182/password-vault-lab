@@ -1,5 +1,6 @@
 // 使い方: node build.mjs
 // 出力: dist/pwm.mjs(CLI)と dist/pwm-mcp.mjs(MCP サーバー)。Node 向けの ESM に束ねる。
+// dist/serve-check.mjs は PC での確認用の同期先(npm run serve:check)。
 // kdbxweb と hash-wasm は cli/node_modules の1つに固める(拡張の共有部品が別のコピーを読むと、Argon2 の設定が効かなくなるため)。
 import { build } from "esbuild";
 import { existsSync } from "node:fs";
@@ -27,6 +28,7 @@ const banner = [
 for (const [name, entry] of [
   ["pwm", "src/pwm.ts"],
   ["pwm-mcp", "src/pwm-mcp.ts"],
+  ["serve-check", "test/integration/serve-check.ts"],
 ]) {
   if (!existsSync(path.join(root, entry))) continue;
   await build({
@@ -44,4 +46,4 @@ for (const [name, entry] of [
     logLevel: "warning",
   });
 }
-console.log("built dist/pwm.mjs, dist/pwm-mcp.mjs");
+console.log("built dist/");

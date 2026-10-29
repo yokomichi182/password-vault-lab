@@ -11,6 +11,7 @@
 | Androidのlogcat | `adb -s emulator-5554 logcat -d` の全体(アプリのプロセスと `system_server` を含む)を、一時ファイルに取らずにその場で `grep -c` で本体用の目印(AGENTS.md)を検索する。`-b all` でも確かめる | フェーズ2から実施 |
 | 拡張のコンソール(フェーズ3で追加) | Playwright で、service worker、ポップアップ(拡張のページ)、テストのページの `console` を worker の起動から終了まで集め、検索する(同じ spec) | フェーズ3から実施 |
 | Chrome の一時プロファイル(フェーズ3で追加) | Playwright が使う一時プロファイル(作業フォルダの外の `%TEMP%\pwv-e2e-profile-*`)を、ブラウザを閉じたあとに全ファイル検索する(`extension/e2e/fixtures.ts` の後始末。見つかれば失敗) | フェーズ3から実施 |
+| CLI と MCP(フェーズ3.5で追加) | `cli/test/` の vitest で、`pwm` と `pwm-mcp` の標準出力と標準エラーを集めて検索する。`pwm-mcp` は MCP の通信(標準出力の全体の JSON)を生のまま集める(`run` で子が値を出す場合を含む。`cli/test/mcp.test.ts` の 19)。`list_titles`・すべてのエラー・`pwm auto list`・`pwm sync` の出力にも目印が無いこと。テストで使った `PWM_HOME`(作業フォルダの外の一時フォルダ)の全ファイル(DPAPI のファイルと `.kdbx` を含む)を、後始末の前に検索する(`registerHomeScan`)。`cli/test/integration/` では `wrangler dev` の標準出力と標準エラーも検索する。探査の対象外にするのは、値を出す設計の2つだけ(`pwm read` の標準出力と、MCP の `read_credential` の応答)。`run` は伏せ字にした後の出力を検索する | フェーズ3.5から実施 |
 | 作業フォルダのファイル | テスト後に `npm run scan:canary` を実行する | 実施 |
 
 作業フォルダは次の条件で探査します。
@@ -20,6 +21,7 @@
 - 作業フォルダの外の探査先(フェーズ1で追加): Android のビルドの出力先 `~/pwvault-build`。テストのソースをコンパイルしたクラスファイル(`compileDebugUnitTestKotlin/classes` の下)だけ除外する
 - 作業フォルダの外の探査先(フェーズ1で追加): 環境変数 `PWV_XCHECK_DIR` を指定したときは、その出力先(kdbxweb との相互確認の .kdbx など)。除外は設けない
 - 追加(フェーズ3): `extension/dist` と Playwright の出力(`extension/test-results`、`extension/playwright-report`)も探査対象。除外は設けない。拡張のテストのソース(`extension/test`、`extension/e2e`)は目印の文字列を実行時に組み立てて書かないので、除外も不要
+- 追加(フェーズ3.5): `cli/dist`(`pwm.mjs` と `pwm-mcp.mjs`)も探査対象。除外は設けない。`cli/test` のソースは目印の文字列を実行時に組み立てて書かないので、除外も不要。`cli/test/integration/` の `wrangler dev` の状態は作業フォルダの外の一時フォルダに置く
 - 探査対象: `.wrangler` を含むファイル。本体用の文字列と自動処理用の接頭辞を検索
 - シンボリックリンク: 追跡しない。存在を検出した時点で、未検査の経路があるため失敗
 - 検出時の表示: 値そのものは出さず、ファイルの相対パスだけを表示して失敗

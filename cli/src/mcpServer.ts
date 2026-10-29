@@ -1,0 +1,165 @@
+// MCP サーバーの本体(stdio)。読むのは自動処理用の保管庫だけ。ネットワークを開かず、Cloudflare に触れない。
+// 本体の保管庫に関するモジュール(src/main/、commands/)は import しない(設計書 §11-2、AGENTS.md の決まり7)。
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { z } from "zod";
+import { errorLabel } from "../../extension/src/shared/vault.ts";
+import { withAutomationDb } from "./automation.ts";
+import { CliError, type Ctx } from "./ctx.ts";
+import { findOne, liveEntries, parseRef, resolveRef, toCredential } from "./kdbx.ts";
+import { msg } from "./i18n.ts";
+import { ENV_NAME_RE, runChild } from "./run.ts";
+
+export const OUTPUT_LIMIT = 64 * 1024;
+export const DEFAULT_TIMEOUT_SECONDS = 120;
+export const MAX_TIMEOUT_SECONDS = 600;
+
+type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
+
+const ok = (value: unknown): ToolResult => ({ content: [{ type: "text", text: JSON.stringify(value) }] });
+const fail = (text: string): ToolResult => ({ content: [{ type: "text", text }], isError: true });
+
+/** 先頭の limit バイトまで集める。超えたら切ったことを覚える。 */
+class Capture {
+  private readonly chunks: Buffer[] = [];
+  private size = 0;
+  truncated = false;
+  push(b: Buffer): void {
+    const room = OUTPUT_LIMIT - this.size;
+    if (room <= 0) {
+      if (b.length > 0) this.truncated = true;
+      return;
+    }
+    const part = b.length > room ? b.subarray(0, room) : b;
+    if (b.length > room) this.truncated = true;
+    this.chunks.push(Buffer.from(part));
+    this.size += part.length;
+  }
+  text(): string {
+    return Buffer.concat(this.chunks).toString("utf8");
+  }
+}
+
+export function createServer(ctx: Ctx): McpServer {
+  const server = new McpServer({ name: "pwm-mcp", version: "0.1.0" });
+
+  /** 例外を、値を含まない応答にする。標準エラーには例外の型の名前までを出す。 */
+  const guarded = (tool: string, fn: () => Promise<ToolResult>): Promise<ToolResult> =>
+    fn().catch((e: unknown) => {
+      if (e instanceof CliError) {
+        ctx.err(`pwm-mcp: ${tool} failed (${e.key})\n`);
+        return fail(e.text(ctx.lang));
+      }
+      const label = errorLabel(e);
+      ctx.err(`pwm-mcp: ${tool} failed (${label})\n`);
+      return fail(msg(ctx.lang, "mcpToolError", { label }));
+    });
+
+  server.registerTool(
+    "list_titles",
+    {
+      description:
+        "List the items in the automation vault: title, type (password or apikey) and environment. Never returns values, user names or URLs.",
+      inputSchema: {},
+    },
+    () =>
+      guarded("list_titles", () =>
+        withAutomationDb(ctx, (db) =>
+          ok(
+            liveEntries(db).map((e) => {
+              const c = toCredential(e);
+              return { title: c.title, type: c.type, environment: c.environment };
+            }),
+          ),
+        ),
+      ),
+  );
+
+  server.registerTool(
+    "read_credential",
+    {
+      description:
+        "Read one item of the automation vault by exact title: username, password, url, notes, type, environment, expires. " +
+        "WARNING: the returned secret stays in this conversation's record. For API keys and anything that can be passed " +
+        "as an environment variable, prefer the `run` tool so the value never appears in the conversation.",
+      inputSchema: { title: z.string().describe("Exact title of the item") },
+    },
+    ({ title }) =>
+      guarded("read_credential", () =>
+        withAutomationDb(ctx, (db) => {
+          const c = toCredential(findOne(db, title));
+          return ok({
+            username: c.username,
+            password: c.password,
+            url: c.url,
+            notes: c.notes,
+            type: c.type,
+            environment: c.environment,
+            expires: c.expires,
+          });
+        }),
+      ),
+  );
+
+  server.registerTool(
+    "run",
+    {
+      description:
+        "Run a command with secrets from the automation vault passed as environment variables, without the shell. " +
+        "`env` maps a variable name to a reference \"TITLE/FIELD\" (FIELD is password by default; also username, url, notes, type, environment, expires). " +
+        "Use this instead of read_credential for API keys: the secret values are replaced with <concealed by pwm> in the output, " +
+        "so they do not enter the conversation. Values transformed by the command (base64, reversed, partial) cannot be concealed. " +
+        `Output is limited to the first ${OUTPUT_LIMIT / 1024} KiB of stdout and of stderr. timeout_seconds defaults to ${DEFAULT_TIMEOUT_SECONDS}, maximum ${MAX_TIMEOUT_SECONDS}.`,
+      inputSchema: {
+        command: z.array(z.string()).describe("Program followed by its arguments"),
+        env: z.record(z.string(), z.string()).optional().describe("Variable name to \"TITLE/FIELD\""),
+        timeout_seconds: z.number().optional(),
+      },
+    },
+    ({ command, env, timeout_seconds }) =>
+      guarded("run", async () => {
+        if (command.length === 0 || command[0] === "") return fail(msg(ctx.lang, "mcpBadCommand"));
+        const timeoutSec = timeout_seconds ?? DEFAULT_TIMEOUT_SECONDS;
+        if (!Number.isFinite(timeoutSec) || timeoutSec <= 0 || timeoutSec > MAX_TIMEOUT_SECONDS) {
+          return fail(msg(ctx.lang, "mcpBadTimeout", { max: MAX_TIMEOUT_SECONDS }));
+        }
+        const specs = Object.entries(env ?? {});
+        const baseLower = new Set(Object.keys(ctx.environ).map((k) => k.toLowerCase()));
+        for (const [name, ref] of specs) {
+          if (!ENV_NAME_RE.test(name)) throw new CliError("badEnvSpec");
+          if (baseLower.has(name.toLowerCase())) throw new CliError("envExists");
+          parseRef(ref);
+        }
+        const resolved = await withAutomationDb(ctx, (db) => specs.map(([name, ref]) => ({ name, value: resolveRef(db, ref) })));
+        const extraEnv: Record<string, string> = {};
+        for (const r of resolved) extraEnv[r.name] = r.value;
+        const out = new Capture();
+        const err = new Capture();
+        const exitCode = await runChild({
+          command,
+          extraEnv,
+          baseEnv: ctx.environ,
+          values: resolved.map((r) => r.value),
+          timeoutMs: timeoutSec * 1000,
+          stdin: "ignore",
+          onStdout: (b) => out.push(b),
+          onStderr: (b) => err.push(b),
+        });
+        return ok({
+          exit_code: exitCode,
+          stdout: out.text(),
+          stderr: err.text(),
+          stdout_truncated: out.truncated,
+          stderr_truncated: err.truncated,
+        });
+      }),
+  );
+
+  return server;
+}
+
+export async function serve(ctx: Ctx, transport: Transport): Promise<McpServer> {
+  const server = createServer(ctx);
+  await server.connect(transport);
+  return server;
+}

@@ -11,12 +11,14 @@
     "typecheck": "tsc --noEmit",
     "test": "node build.mjs && vitest run",
     "test:integration": "node build.mjs && vitest run --config vitest.integration.config.ts",
+    "serve:check": "node build.mjs && node dist/serve-check.mjs",
     "scan:canary": "node ../worker/scripts/scan-canary.mjs"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
     "hash-wasm": "^4.12.0",
-    "kdbxweb": "^2.1.1"
+    "kdbxweb": "^2.1.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/node": "^25.0.0",

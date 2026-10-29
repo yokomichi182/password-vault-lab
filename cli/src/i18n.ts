@@ -26,10 +26,6 @@ const messages = {
     en: () => "The automation vault is not set up on this PC.",
     ja: () => "自動処理用の保管庫がありません。",
   },
-  noMain: {
-    en: () => "The main vault is not set up on this PC. Run `pwm main setup` first.",
-    ja: () => "本体の保管庫の設定がありません。先に `pwm main setup` を実行してください。",
-  },
   noConfig: {
     en: () => "The sync URL is not set. Give --sync-url.",
     ja: () => "同期先の URL が未設定です。--sync-url を指定してください。",
@@ -127,12 +123,9 @@ const messages = {
   spawnFailed: { en: () => "Could not start the command.", ja: () => "コマンドを起動できませんでした。" },
   confirmRemove: { en: () => "Remove this item? (y/N): ", ja: () => "この項目を削除しますか?(y/N): " },
   promptToken: { en: () => "Sync token: ", ja: () => "同期トークン: " },
-  promptMaster: { en: () => "Master password: ", ja: () => "マスターパスワード: " },
   promptValue: { en: () => "Value: ", ja: () => "値: " },
   promptValueAgain: { en: () => "Value (again): ", ja: () => "値(もう一度): " },
   promptNotes: { en: () => "Notes: ", ja: () => "メモ: " },
-  lastSync: { en: (p: P) => `Offline. Using the last synced copy (last sync: ${p.at}).`, ja: (p: P) => `オフラインです。前回の同期の写しを使います(前回の同期: ${p.at})。` },
-  noLastSync: { en: () => "The sync server could not be reached and there is no saved copy.", ja: () => "同期先に通信できず、保存した写しもありません。" },
   unexpected: { en: (p: P) => `Unexpected error (${p.label}).`, ja: (p: P) => `予期しないエラーです(${p.label})。` },
   mcpToolError: { en: (p: P) => `The tool failed (${p.label}).`, ja: (p: P) => `ツールが失敗しました(${p.label})。` },
   mcpBadTimeout: {
