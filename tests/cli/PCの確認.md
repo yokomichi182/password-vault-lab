@@ -22,7 +22,12 @@ Claude Code に `pwm-mcp` を登録する手順は、利用者が自分で行い
 3. 同期先を動かします。別の PowerShell で `cli/` に移り、`npm run serve:check` を実行します。止めるときは Ctrl+C です。
    - ローカルの `wrangler dev`(`.dev.vars` は読まない)が `http://127.0.0.1:18789` で動きます。保管庫は自動処理用の `automation` と本体用の `main` です。
    - 本体用の保管庫には、架空の項目 `Main Only Site` が1つ入っています。
-   - 架空のトークン2つとマスターパスワードは、`%TEMP%\pwm-serve-check\tokens.txt` に書かれます。画面には出ません。値は手で組み立てずに、このファイルからコピーして貼ります。
+   - 架空のトークン2つとマスターパスワードは、`%TEMP%\pwm-serve-check\tokens.txt` に書かれます。画面には出ません。値は手で組み立てずに、このファイルから貼ります。
+   - 貼り方: `pwm` が「同期トークン:」などで止まってから、**別の PowerShell** で次を実行して値だけをクリップボードに入れ、元の画面に戻って Ctrl+V を1回押して Enter を押します(`main-token`、`master-password` も同じ)。入力欄は何も表示しないので、2回貼らないようにします。行を手で選んでコピーすると、名前や空白が混ざって 401 になります。
+
+     ```powershell
+     (Select-String -Path "$env:TEMP\pwm-serve-check\tokens.txt" -Pattern '^automation-token:\s*(\S+)').Matches[0].Groups[1].Value | Set-Clipboard
+     ```
 
 ## 確かめること
 
@@ -48,8 +53,11 @@ Claude Code に `pwm-mcp` を登録する手順は、利用者が自分で行い
 Claude Code の `claude mcp add` で、環境変数と起動のコマンドを渡して登録します。`$env:PWM_HOME` と同じ値を `PWM_HOME` に入れます。
 
 ```powershell
-claude mcp add --scope local -e PWM_HOME="$env:TEMP\pwm-check" pwm -- node "$cli\pwm-mcp.mjs"
+claude.cmd mcp add pwm --scope local -e PWM_HOME="$env:TEMP\pwm-check" -- node "$cli\pwm-mcp.mjs"
 ```
+
+- `claude` ではなく `claude.cmd` と書きます。npm で入れた `claude` は PowerShell では `claude.ps1` が呼ばれ、PowerShell が `--` を取り除くので「missing required argument 'commandOrUrl'」になります(`node` のような実行ファイルには `--` はそのまま渡ります)。
+- 名前の `pwm` は `-e` より前に置きます。`-e` は値を複数受け取るので、後ろに置くと名前まで環境変数として読まれ、「missing required argument 'name'」になります。
 
 - 登録したあと、Claude Code を開き直して `/mcp` で `pwm` がつながっていることを確かめます。
 - 登録を外すときは次のとおりです。
