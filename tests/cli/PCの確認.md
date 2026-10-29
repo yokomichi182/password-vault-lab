@@ -18,6 +18,8 @@ Claude Code に `pwm-mcp` を登録する手順は、利用者が自分で行い
    $env:PWM_HOME = "$env:TEMP\pwm-check"
    ```
 
+   フェーズ3.6から、`auto add` と `auto update --value` は保存のあとに漏洩チェックを1回行います。実在の API に送らないため、この確認でも `$env:PWM_BREACH_URL = "http://127.0.0.1:18080"` を入れます(何も待ち受けていなければ「スキップ」になるだけで、保存はそのまま通ります)。
+
    以降のコマンドは、この環境変数を入れた同じ PowerShell で実行します。日本語の文言で確かめるときは `$env:PWM_LANG = "ja"` も入れます。
 3. 同期先を動かします。別の PowerShell で `cli/` に移り、`npm run serve:check` を実行します。止めるときは Ctrl+C です。
    - ローカルの `wrangler dev`(`.dev.vars` は読まない)が `http://127.0.0.1:18789` で動きます。保管庫は自動処理用の `automation` と本体用の `main` です。
